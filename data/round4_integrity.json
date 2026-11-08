@@ -1,0 +1,11 @@
+{
+  "protected_actuals_sha256": {
+    "visits": "602e637111175776a30aa48bf20b27baeb977273dd64aaa0ac8852bbd7c187b3",
+    "bed_stays": "547598df8d980d2af933f3f9699cb1c0ee8819e2bdc3b39bfe77e20353b3dbab",
+    "daily_metrics": "50c7e1f475da7897310c07ab334de9fa8df31f6967fa922c3816719c42cdbe20",
+    "financial_daily": "f2ac2b604d11d4cbc3122d017ca62ce9b6082e0fb85d625c1f8c6224e8c813a3"
+  },
+  "original_shift_ids_max": "SHF-0027054",
+  "original_historical_shift_count": 26052,
+  "source": "Round 3 input; generated supplemental staff/shifts are synthetic backfill"
+}

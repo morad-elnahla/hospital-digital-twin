@@ -1,0 +1,93 @@
+{
+  "report_type": "Current CSV snapshot consistency report",
+  "generated_on": "2026-11-08",
+  "source": "current data/*.csv, counts verified; not an original generator validation report",
+  "table_count": 42,
+  "visit_count": 44035,
+  "bed_stay_count": 47181,
+  "surgery_count": 8953,
+  "days": 546,
+  "period": {
+    "from": "2025-04-23",
+    "to": "2026-10-20"
+  },
+  "row_counts": {
+    "appointments": 24066,
+    "bed_status_events": 47110,
+    "bed_stays": 47181,
+    "beds": 60,
+    "calendar_days": 567,
+    "calibration_params": 506,
+    "cost_rates": 6,
+    "daily_metrics": 3822,
+    "data_quality_report": 101,
+    "decisions": 0,
+    "departments": 7,
+    "er_events": 158521,
+    "financial_daily": 3822,
+    "financial_risk_daily": 1092,
+    "forecast_evaluation": 72,
+    "forecast_evaluation_aggregated": 24,
+    "forecast_results": 18912,
+    "forecast_results_aggregated": 6480,
+    "forecast_runs": 825,
+    "future_booking_capacity_by_unit": 189,
+    "future_booking_capacity_daily": 21,
+    "hourly_forecast_evaluation": 15,
+    "hourly_forecast_results": 99360,
+    "hourly_metrics": 39315,
+    "latent_events": 28,
+    "nurse_coverage_by_unit_shift_weekday": 168,
+    "nurse_coverage_shift_detail": 6804,
+    "operating_rooms": 6,
+    "or_availability": 126,
+    "patients": 45278,
+    "policy_documents": 3,
+    "resource_bookings": 40489,
+    "resources": 6,
+    "rooms": 23,
+    "schema_mapping": 37,
+    "simulation_events": 0,
+    "simulation_runs": 0,
+    "staff": 170,
+    "staff_assignments": 38381,
+    "staff_shifts": 41432,
+    "surgeries": 8953,
+    "visits": 44035
+  },
+  "unresolved_quality_checks": [
+    {
+      "check": "Overlapping planned surgeries",
+      "value": 311,
+      "detail": "Same operating room booked twice"
+    },
+    {
+      "check": "Wait longer than length of stay",
+      "value": 408,
+      "detail": "Visits whose wait exceeds their whole stay"
+    },
+    {
+      "check": "ER arrivals match visits",
+      "value": 390,
+      "detail": "Days where daily_metrics disagrees with the visits table"
+    }
+  ],
+  "warnings": [
+    {
+      "check": "Days with unusual staff coverage",
+      "value": 11,
+      "detail": "Shifts per day vs median 81: 2025-05-03 has 34, 2025-05-10 has 37, 2025-05-16 has 39, 2025-05-17 has 34, 2025-05-23 has 40, 2025-10-11 has 40"
+    },
+    {
+      "check": "Approved policies",
+      "value": 0,
+      "detail": "Policies in the pack are synthetic examples and none is approved"
+    }
+  ],
+  "limitations": [
+    "Synthetic data only; no clinical validation",
+    "This snapshot supersedes stale v2 row-count claims only, not prior generator integrity assertions",
+    "No new historical records were added or edited",
+    "Unresolved data-quality checks are retained as failures, not suppressed"
+  ]
+}

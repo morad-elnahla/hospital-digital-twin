@@ -1,0 +1,102 @@
+check_name,status,value,threshold
+visit departure >= arrival,PASS,0,0
+fk visits.patient_id,PASS,0,0
+fk bed_stays visit/bed,PASS,0,0
+fk er_events/surgeries visit,PASS,0,0
+no bed double-booking,PASS,0,0
+ER events in order (arrive<=triage<=assessed),PASS,0,0
+boarding_minutes >= 0 for admitted,PASS,0,0
+no OR room overlap,PASS,0,0
+planned elective load within room capacity,PASS,0,0
+no overlapping staff shifts,PASS,0,0
+weekly hours within staff limit,PASS,0,0
+daily ER arrivals == visit rows,PASS,0,0
+daily occupied_beds reconcile with bed_stays (max abs diff),PASS,0,1
+ER arrivals: share identical to 7 days earlier,PASS,0.016,<0.2
+ER arrivals: CV after weekday effect,PASS,0.166,>0.08
+"ER avg wait: not constant (std, distinct values)",PASS,"26.631, 520","std>0, >20"
+"ward occupancy: not constant (std, distinct values)",PASS,"0.159, 52","std>0, >20"
+"ICU occupancy: not constant (std, distinct values)",PASS,"0.195, 26","std>0, >20"
+"OR utilization (working days): not constant (std, distinct values)",PASS,"0.140, 377","std>0, >20"
+ward occupancy mean,PASS,0.76,0.65-0.92
+ICU occupancy mean,PASS,0.727,0.55-0.9
+OR utilization mean (working days),PASS,0.725,0.6-0.85
+ER admit share,PASS,0.22,0.18-0.28
+ER LWBS share,PASS,0.03,0.03-0.08
+ER transfer share,PASS,0.05,0.02-0.06
+Ramadan shifts arrivals to the evening,PASS,0.40 vs 0.20,x1.3
+surge days visible in arrivals (ratio to weekday median),PASS,1.31,>1.15
+"appointments: v1 columns present, in v1 order",PASS,8,8
+"resource_bookings: v1 columns present, in v1 order",PASS,7,7
+"financial_daily: v1 columns present, in v1 order",PASS,8,8
+"simulation_runs: v1 columns present, in v1 order",PASS,12,12
+"simulation_events: v1 columns present, in v1 order",PASS,9,9
+"decisions: v1 columns present, in v1 order",PASS,15,15
+"daily_metrics: v1 columns present, in v1 order",PASS,32,17
+simulation_runs/events/decisions: header only,PASS,0,0
+"appointments: FKs (patient, department) and status enum",PASS,0,0
+appointments: duration > 0; wait only for COMPLETED and >= 0,PASS,0,0
+appointments: every FOLLOW_UP has an earlier visit or consult,PASS,0,0
+appointments: clinic closed on weekend days,PASS,0,0
+appointments: no-show share,PASS,0.053,0.03-0.08
+appointments: cancellation share,PASS,0.12,0.08-0.16
+appointments: Ramadan lowers clinic volume (working days),PASS,23.8 vs 25.8,x0.95
+appointments: DEP-CARD daily volume not constant,PASS,7.61,>0
+appointments: DEP-IMG daily volume not constant,PASS,5.34,>0
+appointments: DEP-LAB daily volume not constant,PASS,7.34,>0
+"resource_bookings: FKs, end > start, status enum",PASS,0,0
+resource_bookings: concurrent non-cancelled bookings <= resource quantity,PASS,0,0
+"resource_bookings: monitors inside ER stay, ventilators inside ICU stay",PASS,0,0
+resource_bookings: OR anesthesia bookings match surgeries (completed and cancelled),PASS,0,0
+resource_bookings: one outpatient booking per imaging/lab appointment,PASS,14020,14020
+daily_metrics: 7 departments on every day,PASS,7,7
+daily_metrics: DEP-CARD columns vary day to day,PASS,13.06|10.64|9.20,std>0
+daily_metrics: DEP-IMG columns vary day to day,PASS,6.33|5.49|3.79,std>0
+daily_metrics: DEP-LAB columns vary day to day,PASS,8.94|7.97|4.47,std>0
+daily_metrics: DEP-OR columns vary day to day,PASS,10.09|0.26|9.07,std>0
+daily_metrics: CARD arrivals == appointments scheduled that day,PASS,0,0
+daily_metrics: IMG arrivals == outpatient appts + ER imaging bookings,PASS,0,0
+"financial_daily: unique (date, dept), 7 departments, FK, no negatives",PASS,3822,3822
+financial_daily: OR revenue == sum of surgery contribution margin per day,PASS,0.0,0.05
+surgeries: cancelled cases have zero realized margin,PASS,0,0
+financial_daily: OR risk reconciles with cancelled + delayed surgeries,PASS,0.0,0.05
+financial_risk_daily: LWBS and boarding cost reconcile with visits,PASS,0.0,0.05
+financial_daily: ER revenue == seen visits x fee,PASS,0,0.05
+financial_daily: revenue/labor/supply not constant per department,PASS,ok,none
+daily_metrics: admit_requests / unmet_demand / is_capacity_capped consistent,PASS,0,0
+daily_metrics: er_pressure_index follows the config formula,PASS,0,0.01
+ICU boarding p99 (minutes),PASS,354.0,<720
+WARD boarding p99 (minutes),PASS,401.0,<720
+no ICU day with zero occupancy,PASS,0,0
+burn-in: ward first day and first week are not at the empty/full transient,PASS,"0.72, 0.71 vs 0.76","<.95, <.12"
+hourly ER census >= boarders and <= ER beds,PASS,0,0
+ER is_capacity_capped follows the config definition,PASS,0,0
+ER capped-day share is informative (15-30%),PASS,0.262,0.15-0.30
+departments without beds have NaN (not 0) bed columns; bed departments have none missing,PASS,0,0
+boarding point mass: no single value holds > 5% of ICU or ward boarders,PASS,0.021,<=0.05
+hourly ER boarders reconcile with admit-decision and ER-exit times of visits,PASS,0.9993,>=0.995
+calibration_params: acuity outcome shares sum to 1; 5 acuity and 24 hour groups,PASS,506,>0
+round 3: calendar spans exactly 21 planned future days,PASS,21,21
+round 3: schedules stop on the 21-day horizon,PASS,2026-11-10,2026-11-10
+round 3: future appointments cover all 21 days and each working-day clinic,PASS,21,21
+round 3: future elective surgeries and urgent placeholders on every working day,PASS,15,>= 15 urgent placeholders
+"round 3: metrics, visits, bed stays, financial actuals end at cutoff",PASS,2026-10-20,2026-10-20
+round 3: future surgeries have no outcomes or realized margins,PASS,0,0
+"round 3: future appointments have no completed, no-shows or waits",PASS,0,0
+round 3: future resource bookings are planned or cancelled only,PASS,0,0
+"round 3: future shifts are rostered, never attendance outcomes",PASS,0,0
+round 3: OR availability contains one record per room per day,PASS,126,126
+round 3: no overlap between future planned OR cases (including turnover),PASS,0,0
+round 3: available OR continuous free blocks match real intervals,PASS,0,0
+round 3: each staffed OR retains a procedure-sized free window,PASS,0,0
+round 3: planned OR load fits staffed availability,PASS,0,0
+round 3: staffed OR availability matches surgery/anesthesia roster,PASS,0,0
+round 3: weekend 24h coverage matches historical roster pattern,PASS,0,0
+round 3: combined historical and planned weekly shift limits,PASS,0,0
+round 3: scheduled cardiology appointments fit doctor slots,PASS,0,0
+round 4: DEP-ER nurses cover >=90% of shift peaks,PASS,1.0000,>=0.90
+round 4: DEP-ICU nurses cover >=90% of shift peaks,PASS,1.0000,>=0.90
+round 4: DEP-WARD nurses cover >=90% of shift peaks,PASS,1.0000,>=0.90
+round 4: DEP-OR nurses cover >=90% of shift peaks,PASS,1.0000,>=0.90
+round 4: ICU 2026-10-15 10:00 nurse headcount,PASS,6 on-duty / 11 occupied,>=6
+round 4: every nurse shift is eight hours,PASS,0,0

@@ -1,0 +1,16 @@
+target_metric,model_name,n,mae,wape,mape_floor,mape_floor_value,bias,coverage_80,skill_vs_naive
+er_arrivals_h,gbm_hourly,6624,1.3261,0.4685,0.4287,2,0.2016,0.8883,0.2752
+er_arrivals_h,same_hour_yesterday,6624,1.8057,0.6379,0.6108,2,-0.005,,0.0131
+er_arrivals_h,seasonal_naive_168h,6624,1.8297,0.6464,0.6153,2,-0.0048,,0.0
+er_arrivals_h,weekday_hour_mean4,6624,1.4874,0.5255,0.5025,2,-0.0017,,0.1871
+er_queue_h,same_hour_yesterday,6624,2.1887,1.2658,1.0698,1,-0.0251,,0.0653
+er_queue_h,seasonal_naive_168h,6624,2.3416,1.3542,1.1898,1,-0.0391,,0.0
+er_queue_h,weekday_hour_mean4,6624,1.996,1.1543,1.069,1,-0.02,,0.1476
+icu_occupied_h,gbm_hourly,6624,1.0384,0.1194,0.1323,2,0.0235,0.8048,0.4974
+icu_occupied_h,same_hour_yesterday,6624,1.7239,0.1982,0.2206,2,0.0137,,0.1656
+icu_occupied_h,seasonal_naive_168h,6624,2.0661,0.2376,0.2651,2,0.0181,,0.0
+icu_occupied_h,weekday_hour_mean4,6624,1.6917,0.1945,0.223,2,0.014,,0.1812
+ward_occupied_h,gbm_hourly,6624,2.4195,0.0896,0.1016,5,0.0412,0.7948,0.5014
+ward_occupied_h,same_hour_yesterday,6624,4.8332,0.1789,0.196,5,0.0044,,0.004
+ward_occupied_h,seasonal_naive_168h,6624,4.8528,0.1796,0.1974,5,0.0835,,0.0
+ward_occupied_h,weekday_hour_mean4,6624,4.0458,0.1498,0.1648,5,0.0506,,0.1663
