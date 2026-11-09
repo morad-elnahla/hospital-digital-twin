@@ -184,6 +184,9 @@ class CorpusRetriever:
                 self.chunks.append({**c, "text": " ".join(text.split())})
         self.stats = {"loaded": len(self.chunks), "dropped": dict(dropped), "sources": len(self.sources)}
         self._index = BM25([f"{c['heading']} {c['text']}" for c in self.chunks])
+        translation_path = Path(path).parent / "rag_arabic_query_map.json"
+        translation_data = json.loads(translation_path.read_text(encoding="utf-8")) if translation_path.exists() else {}
+        self._arabic_query_terms = translation_data.get("terms", {})
 
     def _cite(self, c: dict) -> str:
         s = self.sources[c["source_id"]]
@@ -194,8 +197,15 @@ class CorpusRetriever:
         return PolicyBundle()
 
     async def search(self, query: str, k: int = 3) -> list[Passage]:
+        tokens = set(tokenize(query))
+        translated = []
+        for phrase, english in self._arabic_query_terms.items():
+            phrase_tokens = tokenize(phrase)
+            if phrase_tokens and all(token in tokens for token in phrase_tokens):
+                translated.append(english)
+        expanded_query = " ".join([query, *translated]) if translated else query
         return [Passage(self.chunks[i]["id"], self._cite(self.chunks[i]), self.chunks[i]["text"], sc)
-                for i, sc in self._index.rank(query, k)]
+                for i, sc in self._index.rank(expanded_query, k)]
 
 
 class CompositeRetriever:

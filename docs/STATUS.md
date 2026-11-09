@@ -83,6 +83,11 @@ Every row is one separate pytest process. Durations are wall time and include pr
 - RAG evaluation uses 10 English and 10 Arabic questions at top-3: English **10/10 (100%)**, Arabic **0/10 (0%)**, overall **10/20 (50%)**. `docs/RAG_EVAL.md` and `docs/rag_eval_results.json` record the source-ID hit definition and result. Arabic retrieval is not supported by the current English-only corpus.
 - Phase 5 verification: `test_auth.py` **6 passed**, `test_app.py` **25 passed** (rerun after correcting the ER-template expectation), `test_assistant.py` **14 passed**, `test_policies.py` **10 passed**, new role/policy tests **2 passed**, RAG eval **1 passed**, frontend **3 passed / 1 skipped**. `node --check` and Python compile checks passed.
 
+## Phase 5b — relevance and multilingual retrieval — done
+
+- Simulator labels the generic clinic appointments as “not related to this scenario,” excludes them from the scenario-applied snapshot, and reports scenario-relevant actions separately. ICU x12 returns `unresolved shortfall 101 beds: no verified action can cover it; needs manager/escalation` plus `what_would_help`. Regression test: **1 passed**.
+- Arabic BM25 queries now receive reviewed-needed lexical English query expansion; retrieved source passages remain unchanged. The 20-query top-3 run improved Arabic from **0/10** to **10/10**, English stayed **10/10**. See [RAG_EVAL.md](RAG_EVAL.md). Combined scenario tests **3 passed**, frontend **3 passed / 1 skipped**, RAG eval **1 passed**.
+
 ## Remaining verification limits
 
 - Python 3.12 behavior is unverified.

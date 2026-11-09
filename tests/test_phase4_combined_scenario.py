@@ -64,10 +64,8 @@ def test_run_persists_versioned_input_and_replays_with_same_seed():
 
     temp, app, as_of, snapshot = app_and_snapshot()
     try:
-        scenario = app.parse_scenario({"as_of": as_of.isoformat(), "seed": 17,
-                                       "interventions": [{"type": "demand_change", "unit": "ICU", "x": 1.3}]})
-        result = {"core": app._scenario_core(as_of, scenario, snapshot)}
-        app._persist_simulation(scenario, result, as_of)
+        result = app.simulate({"as_of": as_of.isoformat(), "unit": "ICU", "multiplier": 1,
+                               "seed": 17, "interventions": [{"type": "demand_change", "unit": "ICU", "x": 1.3}]})
         with closing(sqlite3.connect(app.twin.t.path)) as conn:
             saved = conn.execute("SELECT parameters_json,results_json,random_seed FROM simulation_runs WHERE simulation_id=?",
                                  (result["simulation_id"],)).fetchone()

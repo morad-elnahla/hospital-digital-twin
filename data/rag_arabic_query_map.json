@@ -1,0 +1,18 @@
+{
+  "status": "machine-translated query expansion; needs clinical review",
+  "purpose": "Maps Arabic search terms to English retrieval terms only. It does not translate, summarize, or alter source evidence.",
+  "terms": {
+    "سياسة": "policy", "السياسة": "policy", "سياسات": "policies",
+    "تصعيد": "escalation", "التصعيد": "escalation", "تصعيدات": "escalation",
+    "تدفق": "flow", "تدفق المرضى": "patient flow", "المرضى": "patients", "مريض": "patient",
+    "المستشفى": "hospital", "مستشفيات": "hospitals", "متى": "when", "كيف": "how", "ما": "what", "من": "who",
+    "المسؤول": "responsible", "مسؤول": "responsible", "السعة": "capacity", "تأخر": "delay", "التأخر": "delay",
+    "خروج": "discharge", "المرضى": "patients", "مستويات": "levels", "ازدحام": "crowding", "تعالج": "address",
+    "معايير": "standards", "معيار": "standard", "جودة": "quality", "المستشفيات": "hospitals", "الآمن": "safe",
+    "آمن": "safe", "متطلبات": "requirements", "تثقيف": "education", "المعلومات": "information", "معلومات": "information",
+    "المبنية": "based", "الدليل": "evidence", "خدمات": "services", "نقل الدم": "blood transfusion", "نقل": "transfusion",
+    "الدم": "blood", "الآمنة": "safe", "اختيار": "selection", "الأدوية": "medication", "دواء": "medication",
+    "شراؤها": "procurement", "شراء": "procurement", "وفق": "according", "الرعاية": "care", "المتمحورة": "centered",
+    "حول": "around", "المريض": "patient", "المرضى؟": "patients"
+  }
+}

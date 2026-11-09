@@ -333,7 +333,21 @@ class App:
         with self.lock:
             inputs = self._inputs(as_of, scenario)
             decision = asyncio.run(self._orchestrator(body.get("language", "en"), InMemoryAudit()).run(inputs))
-            actions = [a for p in decision.accepted for a in p.actions]
+            unrelated_actions = []
+            scenario_actions = []
+            unrelated_proposal_ids = set()
+            for proposal in decision.accepted:
+                for action in proposal.actions:
+                    item = {"agent": proposal.agent, "action": to_jsonable(action)}
+                    if isinstance(action, Reschedule) and action.from_slot.domain == "CLINIC":
+                        item["label"] = "not related to this scenario"
+                        item["reason"] = "clinic appointment moves do not address bed demand or ER arrivals"
+                        unrelated_actions.append(item)
+                        unrelated_proposal_ids.add(proposal.id)
+                    else:
+                        scenario_actions.append(item)
+            actions = [a for p in decision.accepted for a in p.actions
+                       if not (isinstance(a, Reschedule) and a.from_slot.domain == "CLINIC")]
             after = apply_actions(inputs.twin, actions)
         f = inputs.forecast
         lang = body.get("language") if body.get("language") in ("ar", "en") else "en"
@@ -371,6 +385,9 @@ class App:
         view = decision.to_dict()
         texts = decision_texts(decision, lang)
         view = overlay(view, texts, lang)
+        for proposal in view["accepted"]:
+            if proposal.get("id") in unrelated_proposal_ids:
+                proposal["scenario_relevance"] = "not related to this scenario"
         n_post, total_relief = len(rescheduled), round(sum(relief.values()), 2)
         unavailable = [
             {"metric_key": "waiting", "metric": Msg("sim.m_wait").render(lang), "reason": Msg("sim.na_wait").render(lang)},
@@ -393,15 +410,18 @@ class App:
             "pack_reference": [{"id": r["simulation_id"], "name": r["scenario_name"], "results": json.loads(r["results_json"])}
                                for r in self.twin.t["simulation_runs"]],
             "decision": {"accepted": view["accepted"], "rejected": view["rejected"], "card": view["card"], "reports": view["reports"]}}
-        result["core"] = self._scenario_core(as_of, scenario, inputs.twin)
+        result["scenario_relevant_actions"] = scenario_actions
+        result["not_related_actions"] = unrelated_actions
+        result["core"] = self._scenario_core(as_of, scenario, inputs.twin, moved)
         self._persist_simulation(scenario, result, as_of)
         return result
 
-    def _scenario_core(self, as_of, scenario, initial_snapshot):
+    def _scenario_core(self, as_of, scenario, initial_snapshot, verified_capacity_changes=None):
         """Deterministic, isolated scenario arithmetic. Unvalidated baselines stay labeled as assumptions."""
         from dataclasses import replace
         from hospital_agents.forecasting import _targets, _weekday_mean
 
+        verified_capacity_changes = verified_capacity_changes or {}
         targets = _targets(self.twin)
         def weekday_values(key):
             values = targets.get(key, {}).get("values", {})
@@ -518,6 +538,15 @@ class App:
                                            if row["shortfall"] and donor_headroom else
                                            ["verify staffed-bed and equipment ceiling from operational sources"]
                                            if row["shortfall"] else ["no capacity action indicated by this assumption"])
+                verified = max(0, int(verified_capacity_changes.get(unit, 0)))
+                residual = max(0, row["shortfall"] - verified)
+                row["verified_action_beds"] = verified
+                row["residual_shortfall_beds"] = residual
+                row["residual_message"] = (f"unresolved shortfall {residual} beds: no verified action can cover it; needs manager/escalation"
+                                           if residual else None)
+                if residual:
+                    row["what_would_help"] = list(dict.fromkeys([*row["what_would_help"],
+                                                                 "manager or operations escalation for the unresolved residual"]))
         arrivals = [value for value in weekday_values("er_arrivals") if value is not None]
         doctor_demand = {u: {"status": "abstain", "reason": "no doctor-demand baseline in the data pack"} for u in BED_UNITS}
         resources = {u: {"status": "abstain", "reason": "no resource-demand baseline in the data pack"} for u in BED_UNITS}

@@ -382,7 +382,7 @@ pages.simulator = async root => {
   draw(); fill(root, out);
 };
 function simResult(r) {
-  const U = ["ER", "ICU", "WARD"], b = r.before, a = r.after, acts = r.decision.accepted.flatMap(p => p.actions);
+  const U = ["ER", "ICU", "WARD"], b = r.before, a = r.after, acts = r.scenario_relevant_actions || [];
   const trow = (label, k, f = x => NUM(num(x))) => [label, ...U.map(u => h("span", {}, f(b[u][k]), " → ", f(a[u][k])))];
   const pct = x => NUM(x == null ? "—" : num(x) + "%"), whole = x => NUM(x == null ? "—" : num(x, 0));
   return h("div", { class: "grid", style: "gap:16px" },
@@ -390,10 +390,11 @@ function simResult(r) {
     panel({ title: t("scenario_core"), prov: "simulation", sub: t("assumption_label") },
       table([{ label: t("department") }, { label: t("peak_demand"), n: 1 }, { label: t("beds_total"), n: 1 }, { label: t("shortfall"), n: 1 }, { label: t("nurse_need"), n: 1 }, { label: t("nurse_available"), n: 1 }],
         U.map(u => { const d = r.core?.bed_demand?.[u] || {}, n = d.nurse_demand || {}; return [unitName(u), whole(d.demand), whole(d.beds), whole(d.shortfall), whole(n.required), whole(n.available)]; })),
-      h("div", { class: "small faint" }, U.flatMap(u => { const d = r.core?.bed_demand?.[u] || {}; return [d.why_nothing_moved && h("div", {}, unitName(u), ": ", d.why_nothing_moved), ...(d.what_would_help || []).map(x => h("div", {}, unitName(u), ": ", x))]; }))),
+      h("div", { class: "small faint" }, U.flatMap(u => { const d = r.core?.bed_demand?.[u] || {}; return [d.residual_message && h("div", { class: "warn" }, unitName(u), ": ", d.residual_message), d.why_nothing_moved && h("div", {}, unitName(u), ": ", d.why_nothing_moved), ...(d.what_would_help || []).map(x => h("div", {}, unitName(u), ": ", x))]; }))),
     h("div", { class: "grid g2" },
       panel({ title: t("baseline"), prov: "observed", sub: t("baseline_sub"), source: ["beds", "bed_stays", "daily_metrics"] }, table([{ label: t("department") }, { label: t("beds_total"), n: 1 }, { label: t("peak_demand_beds"), n: 1 }, { label: t("peak_util"), n: 1 }, { label: t("shortfall"), n: 1 }], U.map(u => [unitName(u), whole(b[u].beds), NUM(num(b[u].peak_demand_beds)), pct(b[u].peak_utilisation_pct), whole(b[u].shortfall_beds)]))),
-      panel({ title: t("proposed_actions"), prov: "agent", sub: t("proposed_actions_sub") }, acts.length ? h("ul", { class: "plain small" }, acts.map(x => h("li", {}, actionText(x)))) : empty(t("no_actions"), "check"))),
+      panel({ title: t("proposed_actions"), prov: "agent", sub: t("proposed_actions_sub") }, acts.length ? h("ul", { class: "plain small" }, acts.map(x => h("li", {}, actionText(x.action)))) : empty(t("no_actions"), "check"),
+        r.not_related_actions?.length ? h("p", { class: "small faint" }, t("actions_not_related", { n: r.not_related_actions.length })) : null)),
     h("div", { class: "grid g2" },
       panel({ title: t("before_after"), prov: "simulation", unit: t("u_beds"), sub: t("capacity_arith"), note: t("sim_note") },
         chart({ labels: U.map(unitName), unit: t("u_beds"), series: [{ name: t("beds_before"), values: U.map(u => b[u].beds), color: Charts.COLOR.observed }, { name: t("beds_after"), values: U.map(u => a[u].beds), color: Charts.COLOR.agent }, { name: t("peak_demand"), values: U.map(u => b[u].peak_demand_beds), color: Charts.COLOR.forecast }] }, "bars")),

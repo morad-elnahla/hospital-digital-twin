@@ -4,8 +4,8 @@
   "by_language": {
     "ar": {
       "questions": 10,
-      "hits": 0,
-      "hit_rate": 0.0
+      "hits": 10,
+      "hit_rate": 1.0
     },
     "en": {
       "questions": 10,
@@ -109,71 +109,92 @@
       "language": "ar",
       "question": "سياسة تصعيد تدفق المرضى في المستشفى",
       "expected_source_id": "src002",
-      "hit": false,
-      "retrieved_source_ids": []
+      "hit": true,
+      "retrieved_source_ids": [
+        "src002"
+      ]
     },
     {
       "language": "ar",
       "question": "متى يتم تصعيد تأخر خروج المرضى؟",
       "expected_source_id": "src002",
-      "hit": false,
-      "retrieved_source_ids": []
+      "hit": true,
+      "retrieved_source_ids": [
+        "src002"
+      ]
     },
     {
       "language": "ar",
       "question": "من المسؤول عن تصعيد السعة وتدفق المرضى؟",
       "expected_source_id": "src002",
-      "hit": false,
-      "retrieved_source_ids": []
+      "hit": true,
+      "retrieved_source_ids": [
+        "src002"
+      ]
     },
     {
       "language": "ar",
       "question": "ما مستويات التصعيد عند تأخر المرضى؟",
       "expected_source_id": "src002",
-      "hit": false,
-      "retrieved_source_ids": []
+      "hit": true,
+      "retrieved_source_ids": [
+        "src002"
+      ]
     },
     {
       "language": "ar",
       "question": "كيف تعالج السياسة ازدحام تدفق المرضى؟",
       "expected_source_id": "src002",
-      "hit": false,
-      "retrieved_source_ids": []
+      "hit": true,
+      "retrieved_source_ids": [
+        "src001",
+        "src002"
+      ]
     },
     {
       "language": "ar",
       "question": "معايير جودة المستشفيات لتدفق المرضى الآمن",
       "expected_source_id": "src001",
-      "hit": false,
-      "retrieved_source_ids": []
+      "hit": true,
+      "retrieved_source_ids": [
+        "src001"
+      ]
     },
     {
       "language": "ar",
       "question": "ما متطلبات تثقيف المرضى والمعلومات المبنية على الدليل؟",
       "expected_source_id": "src001",
-      "hit": false,
-      "retrieved_source_ids": []
+      "hit": true,
+      "retrieved_source_ids": [
+        "src001"
+      ]
     },
     {
       "language": "ar",
       "question": "ما معايير خدمات نقل الدم الآمنة؟",
       "expected_source_id": "src001",
-      "hit": false,
-      "retrieved_source_ids": []
+      "hit": true,
+      "retrieved_source_ids": [
+        "src001"
+      ]
     },
     {
       "language": "ar",
       "question": "كيف يتم اختيار الأدوية وشراؤها وفق المعايير؟",
       "expected_source_id": "src001",
-      "hit": false,
-      "retrieved_source_ids": []
+      "hit": true,
+      "retrieved_source_ids": [
+        "src001"
+      ]
     },
     {
       "language": "ar",
       "question": "ما متطلبات الرعاية المتمحورة حول المريض؟",
       "expected_source_id": "src001",
-      "hit": false,
-      "retrieved_source_ids": []
+      "hit": true,
+      "retrieved_source_ids": [
+        "src001"
+      ]
     }
   ]
 }
