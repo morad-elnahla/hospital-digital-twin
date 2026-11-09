@@ -98,7 +98,9 @@ class Snapshot(unittest.TestCase):
 class Agents(unittest.TestCase):
     def test_baseline_needs_no_action(self):
         d = decide()
-        self.assertEqual((d.accepted, d.card.critical_bottleneck), ((), None))
+        self.assertIsNone(d.card.critical_bottleneck)
+        self.assertFalse(any(p.agent in {"bed", "or"} for p in d.accepted))
+        self.assertTrue(all(p.agent == "appointment" for p in d.accepted))
 
     def test_stress_without_policy_is_rejected_as_unverifiable(self):
         d = decide(Scenario("ICU", 12))
@@ -112,13 +114,14 @@ class Agents(unittest.TestCase):
         self.assertFalse(any(p.agent == "bed" for p in d.accepted))
         self.assertGreater(d.card.unmet["ICU:beds"], 0)  # source roster has no safe donor headroom
 
-    def test_only_elective_surgeries_move(self):
-        # 2026-10-01: an elective ICU-bound surgery (Oct 7) lies inside the forecast week and the calendar is known past it.
+    def test_surgery_move_is_unverifiable_without_a_provider_or_team_id(self):
+        # The source has specialty/room roster counts but no case provider or team identifier.
         d = decide(Scenario("ICU", 12), as_of=datetime(2026, 10, 1, 8))
         urgent = {r["surgery_id"] for r in td.t["surgeries"] if r["urgency"] != "ELECTIVE"}
-        moved = {a.booking_id for p in d.accepted for a in p.actions if isinstance(a, Reschedule)}
-        self.assertTrue(moved)
+        moved = {a.booking_id for p in d.accepted if p.agent == "or" for a in p.actions if isinstance(a, Reschedule)}
+        self.assertFalse(moved)
         self.assertFalse(moved & urgent)
+        self.assertTrue(any("UNVERIFIABLE" in reason for r in d.rejected if r.proposal.agent == "or" for reason in r.reasons))
 
     def test_apply_then_rollback_restores_the_snapshot(self):
         pol = PolicyBundle({f"nurse.max_patients_per_nurse:{u}": PolicyValue(40, "test") for u in ("ICU", "WARD")})

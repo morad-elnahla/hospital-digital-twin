@@ -104,10 +104,8 @@ CATALOG: dict[str, tuple[str, str]] = {
                      "الحجز {booking} غير عاجل ومعلَّم بأنه يحتاج سرير عناية"),
     "or.assumed": ("assumed beds freed per procedure: {beds:g} (an assumption, not simulated)",
                    "افتراض عدد الأسرّة المتحررة لكل عملية: {beds:g} (افتراض وليس نتيجة محاكاة)"),
-    "or.verified_slot": ("target {room} on {day} has {free} free {free:minute/minutes} of {capacity} and is inside the known calendar (ends {until}); "
-                         "the move is day-level, the operating-room team assigns the time of day",
-                         "الموعد الجديد في {room} يوم {day} فيه {free} دقيقة متاحة من {capacity} وهو ضمن الجدول المعروف (ينتهي {until})؛ "
-                         "النقل على مستوى اليوم وفريق العمليات يحدد الوقت"),
+    "or.verified_slot": ("capacity slot {room} on {day} has {free} free {free:minute/minutes} of {capacity} inside the known calendar (ends {until}); provider/team compatibility is checked separately",
+                         "سعة الموعد في {room} يوم {day} فيها {free} دقيقة متاحة من {capacity} ضمن الجدول المعروف (ينتهي {until})؛ ويُتحقق من توافق المختص أو الفريق بصورة منفصلة"),
     "or.no_slot": ("booking {booking}: no verified free slot in {room} after the forecast horizon; the schedule data ends {until}",
                    "الحجز {booking}: لا يوجد موعد متاح مؤكد في {room} بعد أفق التوقع؛ بيانات الجدول تنتهي {until}"),
     "or.no_slot_unknown": ("booking {booking}: no verified free slot in {room} after the forecast horizon",
@@ -138,6 +136,10 @@ CATALOG: dict[str, tuple[str, str]] = {
     "slot.missing": ("target slot does not exist", "الموعد المستهدف غير موجود"),
     "slot.domain_or_past": ("target slot is in another domain or in the past", "الموعد المستهدف في مجال آخر أو في الماضي"),
     "slot.provider": ("provider {provider} not verified available for target slot", "المختص {provider} غير مؤكد التوفر في الموعد المستهدف"),
+    "slot.team_unverifiable": ("UNVERIFIABLE: no provider or case team is recorded for this surgery", "غير قابل للتحقق: لا يوجد مختص أو فريق مسجل لهذه العملية"),
+    "slot.team": ("case team {team} is not verified available for target slot", "فريق العملية {team} غير مؤكد التوفر في الموعد المستهدف"),
+    "slot.specialty_unverifiable": ("UNVERIFIABLE: case or operating-room specialty is missing", "غير قابل للتحقق: تخصص العملية أو غرفة العمليات غير متاح"),
+    "slot.specialty": ("case specialty {specialty} is incompatible with target-room specialty {target}", "تخصص العملية {specialty} غير متوافق مع تخصص الغرفة المستهدفة {target}"),
     "slot.overclaimed": ("slot {resource}@{start}: {claimed} claimed for {free} free", "الموعد {resource}@{start}: المطلوب {claimed} والمتاح {free}"),
     "slot.moved_twice": ("booking {booking} moved by several proposals", "الحجز {booking} مطلوب نقله بأكثر من اقتراح"),
     "nurse.unverifiable": ("{unit}: nurse-ratio policy or pools unavailable; change is unverifiable",

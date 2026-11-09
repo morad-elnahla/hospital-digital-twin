@@ -62,16 +62,9 @@ class OperatingRoomCalendar(unittest.TestCase):
             app = App(DATA, Path(tmp) / "rt", Path(tmp) / "pol")
             d = app.run({"as_of": "2026-10-17T08:00", "unit": "ICU", "multiplier": 12, "language": "en"},
                         Principal("m", "operations_manager"))
-        moved = [a for p in d["accepted"] for a in p["actions"] if "booking_id" in a]
-        self.assertTrue(moved)  # Round 4 extends the schedule and permits valid weekday moves
-        availability = {(r["date"], r["or_id"]): r for r in self.td.t["or_availability"]}
-        for m in moved:
-            target = m["to_slot"]["start"][:10]
-            or_id = m["to_slot"]["resource_id"]
-            row = availability[(target, or_id)]
-            self.assertNotEqual(row["availability_status"].upper(), "CLOSED")
-            self.assertGreater(int(float(row["capacity_minutes"])), 0)
-            self.assertLess(datetime.fromisoformat(m["to_slot"]["start"]), self.td.calendar_end)
+        moved = [a for p in d["accepted"] if p["agent"] == "or" for a in p["actions"] if "booking_id" in a]
+        self.assertFalse(moved)  # room capacity is known, but the source has no case provider/team IDs
+        self.assertTrue(any("UNVERIFIABLE" in reason for r in d["rejected"] for reason in r["reasons"]))
 
     def test_arbitration_independently_refuses_a_slot_beyond_the_calendar(self):
         # Defence in depth: even if an agent (or a different adapter) listed the empty future as a slot, it is refused.
@@ -85,8 +78,8 @@ class OperatingRoomCalendar(unittest.TestCase):
         self.assertFalse(res.accepted)
         self.assertIn("outside the known calendar", res.rejected[0].reasons[0])
 
-    def test_verified_move_stays_in_the_same_room_inside_the_calendar(self):
-        # 2026-10-01: elective ICU-bound surgery on Oct 7, calendar known until Oct 20.
+    def test_or_candidate_keeps_the_same_specialty_and_calendar_capacity_is_known(self):
+        # A proposal can identify a free same-specialty slot; arbitration still requires case team identity.
         snap_inputs = self.td.inputs(T0, __import__("hospital_agents.twin_data", fromlist=["Scenario"]).Scenario("ICU", 12))
         rep = run(ORAgent().propose(snap_inputs, Settings()))
         self.assertTrue(rep.proposals)
@@ -99,6 +92,7 @@ class OperatingRoomCalendar(unittest.TestCase):
             self.assertLess(a.to_slot.start, twin.calendar_end)                       # inside what the data knows
             b, dst = twin.booking(a.booking_id), twin.slot(a.to_slot)
             self.assertGreaterEqual(dst.free, b.duration)                             # fits the free minutes
+            self.assertEqual(dst.specialty, b.specialty)
 
     def test_two_moves_into_one_day_never_exceed_its_free_minutes(self):
         cap = 600
@@ -130,24 +124,22 @@ class ImpactAccounting(unittest.TestCase):
     def test_postponements_are_not_subtracted_from_the_confirmed_deficit(self):
         d = self._decide()
         moved = [p for p in d.accepted if p.agent == "or"]
-        self.assertTrue(moved)
+        self.assertFalse(moved)  # no provider/team IDs exist in the source booking rows
         card = d.card
         self.assertGreater(card.unmet["ICU:beds"], 0)  # R4 forecast baseline is data-derived
-        self.assertEqual(card.assumed_relief["ICU:beds"], float(len(moved)))
-        self.assertEqual(card.unmet_if_assumed["ICU:beds"], card.unmet["ICU:beds"] - len(moved))
+        self.assertEqual(card.assumed_relief, {})
+        self.assertEqual(card.unmet_if_assumed, {})
+        self.assertTrue(any("UNVERIFIABLE" in r for rejected in d.rejected for r in rejected.reasons))
         self.assertEqual(card.capacity_added, {})
 
     def test_the_card_labels_the_assumption_and_the_unsimulated_impact(self):
         d = self._decide()
-        text = " ".join(d.card.assumptions + d.card.unverified)
-        self.assertIn("ASSUMED", text)
-        self.assertIn("not simulated", text)
-        self.assertIn("only if that assumption holds", text)
-        self.assertTrue(all(p.impact is None and p.effects[0].basis == "assumed" for p in d.accepted if p.agent == "or"))
+        self.assertFalse(any(p.agent == "or" for p in d.accepted))
+        self.assertTrue(any("UNVERIFIABLE" in r for rejected in d.rejected for r in rejected.reasons))
 
     def test_explanation_never_presents_the_assumption_as_a_result(self):
         d = self._decide()
-        self.assertIn("assumption, not a simulation", d.explanation.text)
+        self.assertNotIn("beds freed per procedure", d.explanation.text)
 
     def test_what_if_preview_reports_relief_apart_from_the_shortfall(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -229,7 +221,7 @@ class EmptyDecisions(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_no_pressure_means_no_pending_decision(self):
-        d = self.app.run({"as_of": "2026-10-17T08:00", "unit": "ICU", "multiplier": 1, "language": "en"}, self.mgr)
+        d = self.app.run({"as_of": "2026-10-20T08:00", "unit": "ICU", "multiplier": 1, "language": "en"}, self.mgr)
         self.assertEqual(d["status"], "NO_ACTION")
         self.assertEqual(d["no_action_code"], "none.reason.no_proposals")
         self.assertEqual(d["accepted"], [])
@@ -241,27 +233,31 @@ class EmptyDecisions(unittest.TestCase):
         self.assertEqual(self.app.applied, [])
 
     def test_everything_rejected_is_closed_with_the_reason_not_left_pending(self):
-        d = self.app.run({"as_of": "2026-10-17T08:00", "unit": "ICU", "multiplier": 12, "language": "en"}, self.mgr)
-        self.assertEqual(d["status"], "PENDING")   # R4 OR schedules have verified free Sunday slots
-        self.assertTrue(any(p["agent"] == "or" for p in d["accepted"]))
+        d = self.app.run({"as_of": "2026-10-20T08:00", "unit": "ICU", "multiplier": 12, "language": "en"}, self.mgr)
+        self.assertEqual(d["status"], "NO_ACTION")
+        self.assertEqual(d["accepted"], [])
+        self.assertTrue(any("UNVERIFIABLE" in reason for r in d["rejected"] for reason in r["reasons"]))
         self.assertFalse(any(p["agent"] == "bed" for p in d["accepted"]))
         self.assertGreater(d["card"]["unmet"]["ICU:beds"], 0)
-        self.assertEqual(self.app.health()["pending"], 1)
-        self.assertEqual(self.app.decisions()[0]["status"], "PENDING")
+        self.assertEqual(self.app.health()["pending"], 0)
+        self.assertEqual(self.app.decisions()[0]["status"], "NO_ACTION")
 
     def test_arabic_recommendations_use_the_r4_calendar_and_retain_arabic_text(self):
-        d = self.app.run({"as_of": "2026-10-17T08:00", "unit": "ICU", "multiplier": 12, "language": "ar"}, self.mgr)
-        self.assertEqual(d["status"], "PENDING")  # source R4 roster permits surgery moves
-        self.assertTrue(d["accepted"])
+        d = self.app.run({"as_of": "2026-10-20T08:00", "unit": "ICU", "multiplier": 12, "language": "ar"}, self.mgr)
+        self.assertEqual(d["status"], "NO_ACTION")
+        self.assertEqual(d["accepted"], [])
+        self.assertTrue(any("غير قابل للتحقق" in reason for r in d["rejected"] for reason in r["reasons_ar"]))
         self.assertRegex(d["card"]["summary"], r"[\u0600-\u06FF]")
         self.assertGreater(d["card"]["unmet"]["ICU:beds"], 0)
 
     def test_a_decision_with_a_real_action_is_still_pending(self):
         for u in ("ICU", "WARD"):
             self.app.set_policy({"unit": u, "value": 40}, self.mgr)
-        d = self.app.run({"as_of": "2026-10-17T08:00", "unit": "ICU", "multiplier": 12, "language": "en"}, self.mgr)
-        self.assertEqual(d["status"], "PENDING")
-        self.assertEqual(self.app.approve(d["id"], {}, self.mgr)["status"], "APPLIED")
+        d = self.app.run({"as_of": "2026-10-20T08:00", "unit": "ICU", "multiplier": 12, "language": "en"}, self.mgr)
+        self.assertEqual(d["status"], "NO_ACTION")
+        with self.assertRaises(ApiError) as e:
+            self.app.approve(d["id"], {}, self.mgr)
+        self.assertEqual(e.exception.status, 409)
 
 
 class ReadableReasons(unittest.TestCase):

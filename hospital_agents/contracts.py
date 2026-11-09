@@ -59,6 +59,8 @@ class Slot:
     capacity: int                        # units are the adapter's choice (minutes for OR/clinic slots)
     booked: int
     provider_ids: tuple[str, ...] = ()   # providers verified available for this slot
+    specialty: str | None = None
+    team_ids: tuple[str, ...] = ()
 
     @property
     def free(self) -> int:
@@ -71,8 +73,10 @@ class Booking:
     slot: SlotKey
     urgency: Urgency
     provider_id: str | None = None
-    needs_icu_bed: bool = False
+    needs_icu_bed: bool | None = False
     duration: int = 1                    # same unit as Slot.capacity
+    team_id: str | None = None
+    specialty: str | None = None
 
 
 @dataclass(frozen=True)
@@ -173,10 +177,17 @@ def _twin(d: Mapping[str, Any]) -> TwinSnapshot:
     pools = {k: Pool(k, int(v["total"]), int(v.get("committed", 0)), v.get("hard_max"))
              for k, v in d["pools"].items()}
     slots = tuple(Slot(_slot_key(s), _dt(s["end"]), int(s["capacity"]), int(s["booked"]),
-                       tuple(s.get("provider_ids", ()))) for s in d.get("slots", ()))
+                       tuple(s.get("provider_ids", ())), s.get("specialty"), tuple(s.get("team_ids", ())))
+                  for s in d.get("slots", ()))
+    def planned_icu(raw):
+        if raw is None:
+            return None
+        if isinstance(raw, str):
+            return raw.strip().lower() in {"true", "1", "yes"}
+        return bool(raw)
     bookings = tuple(Booking(b["id"], _slot_key(b["slot"]), Urgency(b["urgency"]),
-                             b.get("provider_id"), bool(b.get("needs_icu_bed", False)),
-                             int(b.get("duration", 1)))
+                             b.get("provider_id"), planned_icu(b.get("needs_icu_bed", False)),
+                             int(b.get("duration", 1)), b.get("team_id"), b.get("specialty"))
                      for b in d.get("bookings", ()))
     return TwinSnapshot(_dt(d["as_of"]), d["version"], pools, slots, bookings,
                         _dt(d["calendar_end"]) if d.get("calendar_end") else None)

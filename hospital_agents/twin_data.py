@@ -19,7 +19,10 @@ Documented simplifications (all synthetic-data conveniences, none clinical):
     no urgency field for appointments, so NEW_CONSULT is treated as not movable.
   * For bookings after `as_of`, the final outcome status is unknown at that time and ignored,
     except CANCELLED/RESCHEDULED which are excluded.
-  * needs_icu_bed = the surgery's visit has an ICU stay somewhere in the data.
+  * Planned ICU need comes from surgeries.icu_bed_required / post_op_destination. Historical ICU stays
+    are retained for retrospective comparison and never used as replay decision inputs.
+  * Future bookings use planned rows only. Later final status changes have no effective timestamp in
+    this data pack, so CANCELLED/RESCHEDULED outcomes are not allowed to rewrite an earlier replay.
   * The booking calendar is only KNOWN up to the last day of the pack. Days after it are not
     modelled at all (no slots), and `TwinSnapshot.calendar_end` says so: an empty future is
     unknown, never "free". Agents and constraints refuse to move a booking into it.
@@ -47,7 +50,6 @@ BED_UNITS = ("ER", "ICU", "WARD")
 FORECAST_DAYS = 7
 CLINIC_HOURS = range(8, 17)
 STAFF_ROLES = {"NURSE": "nurses", "DOCTOR": "doctors"}
-NOT_BOOKED = {"CANCELLED", "RESCHEDULED"}
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,17 @@ def _dt(s: str) -> datetime:
     # the synthetic pack may contain nanosecond-looking timestamps.
     s = re.sub(r"(\.\d{6})\d+(?=Z|[+-]\d{2}:?\d{2}|$)", r"\1", s)
     return datetime.fromisoformat(s)
+
+
+def _planned_icu_need(surgery: dict) -> bool | None:
+    """Return an ICU need only from consistent, explicit planned fields."""
+    raw = surgery.get("icu_bed_required", "").strip().lower()
+    flag = True if raw in {"true", "1", "yes"} else False if raw in {"false", "0", "no"} else None
+    dest = surgery.get("post_op_destination", "").strip().upper()
+    destination_need = True if dest == "ICU" else False if dest in {"HOME", "WARD"} else None
+    if flag is not None and destination_need is not None and flag != destination_need:
+        return None
+    return flag if flag is not None else destination_need
 
 
 def _read(path: Path) -> list[dict]:
@@ -168,7 +181,9 @@ class TwinData:
         self.stays = [(s["bed_id"], _dt(s["start_time"]),
                        _dt(s["end_time"]) if s["end_time"] else open_stay_end)
                       for s in t["bed_stays"]]
-        self.icu_visits = {s["visit_id"] for s in t["bed_stays"] if s["bed_id"].startswith("BED-ICU")}
+        self.historical_icu_visits = {s["visit_id"] for s in t["bed_stays"] if s["bed_id"].startswith("BED-ICU")}
+        # Compatibility alias for historical-truth comparisons only; decision logic uses planned surgery fields.
+        self.icu_visits = self.historical_icu_visits
         self.staff_role = {s["staff_id"]: (s["department_id"], s["role"]) for s in t["staff"]}
         self.shifts = [(_dt(s["shift_start"]), _dt(s["shift_end"]), s["staff_id"], s["status"])
                        for s in t["staff_shifts"]]
@@ -234,19 +249,18 @@ class TwinData:
         bookings: list[Booking] = []
         for r in self.t["surgeries"]:
             start = _dt(r["planned_start"])
-            if start <= as_of or r["status"] in NOT_BOOKED:
+            if start <= as_of:
                 continue
             key = SlotKey("OR", r["or_id"], datetime.combine(start.date(), time.min))
             dur = int(r["planned_duration_minutes"])
             booked[key] += dur
             bookings.append(Booking(
                 r["surgery_id"], key, Urgency.NON_URGENT if r["urgency"] == "ELECTIVE" else Urgency.URGENT,
-                None, r["visit_id"] in self.icu_visits, dur))
+                None, _planned_icu_need(r), dur, None, r["specialty"] or None))
         clinic = self.dept_by_type.get("CLINIC")
-        doctors = sum(1 for dep, role in self.staff_role.values() if dep == clinic and role == "DOCTOR")
         for r in self.t["appointments"]:
             start = _dt(r["scheduled_start"])
-            if r["department_id"] != clinic or start <= as_of or r["status"] in NOT_BOOKED:
+            if r["department_id"] != clinic or start <= as_of:
                 continue
             key = SlotKey("CLINIC", clinic, start.replace(minute=0, second=0))
             dur = int(r["duration_minutes"])
@@ -284,11 +298,16 @@ class TwinData:
                             continue
                         capacity = int(float(r["daily_capacity_hours"]) * 60)
                         used = booked[key]
-                    slots.append(Slot(key, midnight + timedelta(days=1), capacity, used))
+                    slots.append(Slot(key, midnight + timedelta(days=1), capacity, used,
+                                      specialty=r["specialty"] or None))
             for h in CLINIC_HOURS:
                 if clinic:
                     key = SlotKey("CLINIC", clinic, midnight + timedelta(hours=h))
-                    slots.append(Slot(key, key.start + timedelta(hours=1), doctors * 60, booked[key]))
+                    slot_end = key.start + timedelta(hours=1)
+                    on_slot = {staff for start, end, staff, status in self.shifts
+                               if start <= key.start and end >= slot_end and status != "ABSENT"
+                               and self.staff_role.get(staff) == (clinic, "DOCTOR")}
+                    slots.append(Slot(key, slot_end, len(on_slot) * 60, booked[key]))
         return tuple(slots), tuple(sorted(bookings, key=lambda b: b.id))
 
     def snapshot(self, as_of: datetime, version_suffix: str = "") -> TwinSnapshot:

@@ -1,10 +1,10 @@
 """Agents that move bookings: OR (relieve downstream bed pressure) and Appointment
 (rebalance overbooked clinic slots). Both touch NON_URGENT bookings only.
 
-A target slot is accepted only when it is *known*: it exists in the twin's calendar, lies before
-the calendar's end (an empty future is unknown, not free), has enough free minutes after the
-agent's own earlier claims, and has the booking's provider verified available. Operating-room
-moves stay in the booking's own room, so specialty and equipment never change.
+A target slot must be *known*: it exists in the twin's calendar, lies before the calendar's end
+(an empty future is unknown, not free), and has enough free minutes after the agent's earlier
+claims. Operating-room moves stay in the booking's own room. Final arbitration separately checks
+specialty and provider/team compatibility; missing provider/team identifiers make a move unverifiable.
 """
 from __future__ import annotations
 

@@ -36,6 +36,7 @@
         "end": "2026-01-18T12:00:00+00:00",
         "capacity": 1,
         "booked": 0,
+        "specialty": "CARDIAC",
         "provider_ids": [
           "dr-a",
           "dr-b"
@@ -74,7 +75,8 @@
         },
         "urgency": "non_urgent",
         "provider_id": "dr-a",
-        "needs_icu_bed": true
+        "needs_icu_bed": true,
+        "specialty": "CARDIAC"
       },
       {
         "id": "or-2",
@@ -85,7 +87,8 @@
         },
         "urgency": "urgent",
         "provider_id": "dr-b",
-        "needs_icu_bed": true
+        "needs_icu_bed": true,
+        "specialty": "CARDIAC"
       },
       {
         "id": "cl-1",

@@ -99,7 +99,8 @@ class Api(unittest.TestCase):
         _, d = self.call("/api/run", STRESS, "analyst")
         self.assertEqual((d["status"], d["stale"]), ("PENDING", False))
         self.assertTrue(d["accepted"])
-        self.assertTrue(all(p["agent"] == "or" for p in d["accepted"]))  # R4: no safe spare beds to transfer
+        self.assertTrue(all(p["agent"] == "appointment" for p in d["accepted"]))  # OR team IDs are absent, so moves fail closed
+        self.assertTrue(any("UNVERIFIABLE" in reason for r in d["rejected"] for reason in r["reasons"]))
         s, a = self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")
         self.assertEqual((s, a["status"], a["decided_by"]), (200, "APPLIED", "manager (Operations Manager)"))
         self.assertEqual(self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")[0], 409)
@@ -200,7 +201,7 @@ class Api(unittest.TestCase):
 
     # ── decision rules from the review ──
     def test_a_decision_without_actions_can_never_be_applied(self):
-        _, d = self.call("/api/run", {**STRESS, "multiplier": 1}, "analyst")
+        _, d = self.call("/api/run", {**STRESS, "multiplier": 1, "as_of": "2026-10-20T08:00"}, "analyst")
         self.assertEqual(d["accepted"], [])
         s, err = self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")
         self.assertEqual(s, 409)
@@ -214,12 +215,13 @@ class Api(unittest.TestCase):
     def test_sandbox_revision_stales_decisions_even_when_the_applied_count_is_unchanged(self):
         self.set_policies()
         _, a = self.call("/api/run", STRESS, "analyst")
+        # Make a second independently pending decision before the sandbox changes.
+        _, pending = self.call("/api/run", {**STRESS, "multiplier": 11.9}, "analyst")
         self.call(f"/api/decisions/{a['id']}/approve", {}, "manager")
-        # A different replay moment still has OR changes after the first application.
-        _, pending = self.call("/api/run", {**STRESS, "as_of": "2026-10-19T08:00"}, "analyst")
         self.assertEqual(pending["status"], "PENDING")
+        self.assertTrue(self.call(f"/api/decisions/{pending['id']}", who="viewer")[1]["stale"])
         self.call("/api/rollback", {}, "manager")
-        _, c = self.call("/api/run", {**STRESS, "as_of": "2026-10-19T08:00"}, "analyst")
+        _, c = self.call("/api/run", {**STRESS, "multiplier": 11.8}, "analyst")
         self.call(f"/api/decisions/{c['id']}/approve", {}, "manager")
         self.assertEqual(len(self.call("/api/sandbox", who="viewer")[1]["applied"]), 1)            # same length as when `pending` was made
         self.assertTrue(self.call(f"/api/decisions/{pending['id']}", who="viewer")[1]["stale"])
@@ -241,8 +243,8 @@ class Api(unittest.TestCase):
             self.call("/api/run", STRESS, "analyst")
             bodies = [json.dumps(self.call(p, who="manager")[1]) for p in ("/api/status", "/api/health", "/api/audit", "/api/decisions", "/api/assistant")]
         self.assertFalse([b for b in bodies if "secret-key-123" in b])
-        self.assertNotIn("secret-key-123", (self.tmp / "rt" / "audit.jsonl").read_text())
-        self.assertNotIn("secret-key-123", (self.tmp / "rt" / "state.json").read_text())
+        self.assertNotIn("secret-key-123", (self.tmp / "rt" / "audit.jsonl").read_text(encoding="utf-8"))
+        self.assertNotIn("secret-key-123", (self.tmp / "rt" / "state.json").read_text(encoding="utf-8"))
 
     def test_connection_test_reports_a_missing_key_and_is_not_open_to_viewers(self):
         with mock.patch.dict(os.environ, {}, clear=True):
@@ -253,7 +255,8 @@ class Api(unittest.TestCase):
 
     def test_assistant_endpoints_need_sign_in_and_keep_a_conversation(self):
         self.assertEqual(self.call("/api/assistant", {"message": "hi"})[0], 401)
-        s, a = self.call("/api/assistant", {"message": "How is the ICU?", "language": "en"}, "viewer")
+        with mock.patch.dict(os.environ, {}, clear=True):
+            s, a = self.call("/api/assistant", {"message": "How is the ICU?", "language": "en"}, "viewer")
         self.assertEqual((s, a["mode"], a["intent"]), (200, "local", "beds"))
         self.assertEqual(len(self.call("/api/assistant", who="viewer")[1]["history"]), 2)
         self.call("/api/assistant/reset", {}, "viewer")

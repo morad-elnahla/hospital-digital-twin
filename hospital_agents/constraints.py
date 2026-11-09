@@ -110,8 +110,18 @@ class SlotAvailability:
                     bad(Msg("slot.missing"))
                 elif a.to_slot.domain != a.from_slot.domain or a.to_slot.start <= snap.as_of:
                     bad(Msg("slot.domain_or_past"))
+                elif b.slot.domain == "OR" and (not b.specialty or not dst.specialty):
+                    bad(Msg("slot.specialty_unverifiable"))
+                elif b.slot.domain == "OR" and b.specialty != dst.specialty:
+                    bad(Msg("slot.specialty", specialty=b.specialty, target=dst.specialty))
                 elif b.provider_id and b.provider_id not in dst.provider_ids:
                     bad(Msg("slot.provider", provider=b.provider_id))
+                elif b.slot.domain == "OR" and b.team_id and not dst.team_ids:
+                    bad(Msg("slot.team_unverifiable"))
+                elif b.slot.domain == "OR" and b.team_id and b.team_id not in dst.team_ids:
+                    bad(Msg("slot.team", team=b.team_id))
+                elif b.slot.domain == "OR" and not b.provider_id and not b.team_id:
+                    bad(Msg("slot.team_unverifiable"))
                 else:
                     claims[a.to_slot].add(p.id)
                     moved[a.booking_id].add(p.id)
