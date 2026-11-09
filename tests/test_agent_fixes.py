@@ -226,20 +226,20 @@ class EmptyDecisions(unittest.TestCase):
         self.assertEqual(e.exception.status, 409)
         self.assertEqual(self.app.applied, [])
 
-    def test_everything_rejected_is_closed_with_the_reason_not_left_pending(self):
+    def test_everything_rejected_with_shortfall_is_escalated_not_left_pending(self):
         d = self.app.run({"as_of": "2026-10-20T08:00", "unit": "ICU", "multiplier": 12, "language": "en"}, self.mgr)
-        self.assertEqual(d["status"], "NO_ACTION")
+        self.assertEqual(d["status"], "ESCALATE")
         self.assertEqual(d["accepted"], [])
         self.assertTrue(any("rolling-origin validation is missing" in note for r in d["reports"]
                             if r["agent"] == "or" for note in r["notes"]))
         self.assertFalse(any(p["agent"] == "bed" for p in d["accepted"]))
         self.assertNotIn("ICU:beds", d["card"]["unmet"])
         self.assertEqual(self.app.health()["pending"], 0)
-        self.assertEqual(self.app.decisions()[0]["status"], "NO_ACTION")
+        self.assertEqual(self.app.decisions()[0]["status"], "ESCALATE")
 
     def test_arabic_recommendations_use_the_r4_calendar_and_retain_arabic_text(self):
         d = self.app.run({"as_of": "2026-10-20T08:00", "unit": "ICU", "multiplier": 12, "language": "ar"}, self.mgr)
-        self.assertEqual(d["status"], "NO_ACTION")
+        self.assertEqual(d["status"], "ESCALATE")
         self.assertEqual(d["accepted"], [])
         self.assertTrue(any("غير متوفر" in note for r in d["reports"] if r["agent"] == "or" for note in r["notes"]))
         self.assertRegex(d["card"]["summary"], r"[\u0600-\u06FF]")
@@ -249,7 +249,7 @@ class EmptyDecisions(unittest.TestCase):
         for u in ("ICU", "WARD"):
             self.app.set_policy({"unit": u, "value": 40}, self.mgr)
         d = self.app.run({"as_of": "2026-10-20T08:00", "unit": "ICU", "multiplier": 12, "language": "en"}, self.mgr)
-        self.assertEqual(d["status"], "NO_ACTION")
+        self.assertEqual(d["status"], "ESCALATE")
         with self.assertRaises(ApiError) as e:
             self.app.approve(d["id"], {}, self.mgr)
         self.assertEqual(e.exception.status, 409)

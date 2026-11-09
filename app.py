@@ -2,7 +2,7 @@
 
     python app.py [--port 8000] [--data data] [--reset-credentials]     then open http://127.0.0.1:8000
 
-Standard library only. Serves the dashboard (dashboard.html + static/) and a JSON API over the CSV
+Standard library only. Serves the source-built dashboard (ui/dashboard.html + ui/) and a JSON API over the CSV
 data pack. Every endpoint except /api/login needs a signed-in account; the role comes from the
 account stored on the server, never from the request. Decisions, the sandbox, the audit log and
 accounts are persisted in ./runtime; structured policies in ./policies. Nothing writes to data/.
@@ -42,7 +42,8 @@ from hospital_agents.twin_data import BED_UNITS, Scenario, TwinData, apply_actio
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
-CONTENT_TYPES = {".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".woff2": "font/woff2"}
+UI = ROOT / "ui"
+CONTENT_TYPES = {".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".woff": "font/woff", ".woff2": "font/woff2", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon"}
 CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
 
 
@@ -332,16 +333,18 @@ class App:
                         raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] closure date must fall within as_of and the scenario horizon")
         with self.lock:
             inputs = self._inputs(as_of, scenario)
-            decision = asyncio.run(self._orchestrator(body.get("language", "en"), InMemoryAudit()).run(inputs))
+            orchestrator = self._orchestrator(body.get("language", "en"), InMemoryAudit())
+            decision = asyncio.run(orchestrator.run(inputs))
             unrelated_actions = []
             scenario_actions = []
             unrelated_proposal_ids = set()
             for proposal in decision.accepted:
                 for action in proposal.actions:
-                    item = {"agent": proposal.agent, "action": to_jsonable(action)}
+                    item = {"proposal_id": proposal.id, "agent": proposal.agent, "action": to_jsonable(action)}
                     if isinstance(action, Reschedule) and action.from_slot.domain == "CLINIC":
-                        item["label"] = "not related to this scenario"
-                        item["reason"] = "clinic appointment moves do not address bed demand or ER arrivals"
+                        item["label_code"] = "not_related_action"
+                        item["reason_code"] = "clinic_move_unrelated"
+                        item["reason_params"] = {}
                         unrelated_actions.append(item)
                         unrelated_proposal_ids.add(proposal.id)
                     else:
@@ -396,6 +399,17 @@ class App:
         if n_post:
             unavailable.insert(0, {"metric_key": "effect", "metric": Msg("sim.m_relief").render(lang),
                                    "reason": Msg("sim.na_relief", n=n_post, relief=total_relief).render(lang)})
+        db_path = getattr(self.twin.t, "path", None)
+        if db_path is not None:
+            # Historical results_json can contain prior pack references. Returning those whole
+            # results here made each new simulation recursively duplicate the entire history.
+            with closing(sqlite3.connect(db_path)) as conn:
+                pack_reference = [{"id": row[0], "name": row[1], "scenario_type": row[2], "status": row[3]}
+                                  for row in conn.execute("SELECT simulation_id,scenario_name,scenario_type,status FROM simulation_runs")]
+        else:
+            pack_reference = [{"id": r["simulation_id"], "name": r["scenario_name"],
+                               "scenario_type": r.get("scenario_type"), "status": r.get("status")}
+                              for r in self.twin.t["simulation_runs"]]
         result = {
             "as_of": as_of.isoformat(), "scenario": to_jsonable(scenario), "before": b, "after": a, "bed_change": moved,
             "capacity_cost_change_egp_per_day": cost,
@@ -407,12 +421,20 @@ class App:
             "assumed_relief_beds": relief or None,
             "impact_basis": {"capacity_changes": "computed", "postponements": "assumed" if n_post else None},
             "unavailable": unavailable,
-            "pack_reference": [{"id": r["simulation_id"], "name": r["scenario_name"], "results": json.loads(r["results_json"])}
-                               for r in self.twin.t["simulation_runs"]],
+            "pack_reference": pack_reference,
             "decision": {"accepted": view["accepted"], "rejected": view["rejected"], "card": view["card"], "reports": view["reports"]}}
         result["scenario_relevant_actions"] = scenario_actions
-        result["not_related_actions"] = unrelated_actions
+        # The orchestrator records clinic moves before filtering them out of arbitration.
+        # Show these only as unrelated suggestions; they never enter this decision.
+        result["not_related_actions"] = [{**item, "label_code": "not_related_action",
+                                           "reason_code": "clinic_move_unrelated", "reason_params": {}}
+                                          for item in orchestrator.unrelated_suggestions]
         result["core"] = self._scenario_core(as_of, scenario, inputs.twin, moved)
+        residual_total = sum(int((row or {}).get("residual_shortfall_beds", 0) or 0)
+                             for row in result["core"].get("bed_demand", {}).values())
+        result["status"] = ("PENDING" if has_sandbox_effect(decision.accepted) else
+                            "ESCALATE" if residual_total > 0 else "NO_ACTION")
+        result["decision"].update(status=result["status"], scenario_core=result["core"])
         self._persist_simulation(scenario, result, as_of)
         return result
 
@@ -448,14 +470,14 @@ class App:
                 key = f'{item["unit"]}:{"nurses" if item["role"] == "NURSE" else "doctors"}'
                 pool = pools.get(key)
                 if pool is None:
-                    rejected.append({"intervention": item, "reason": f"staff pool {key} is unavailable"})
+                    rejected.append({"intervention": item, "reason_code": "staff_pool_unavailable", "reason_params": {"pool": key}})
                     continue
                 before = pool.total
                 delta = item.get("delta")
                 if delta is None:
                     delta = -math.floor(before * float(item["absent_pct"]) / 100)
                 if before + delta < 0:
-                    rejected.append({"intervention": item, "reason": f"requested staffing reduction exceeds rostered {key} coverage ({before})"})
+                    rejected.append({"intervention": item, "reason_code": "staff_reduction_exceeds_rostered", "reason_params": {"pool": key, "available": before}})
                     continue
                 if item["role"] == "NURSE" and delta:
                     proposal = Proposal(f"staff-{len(rejected)}", "scenario", "Nurse coverage change",
@@ -463,7 +485,7 @@ class App:
                     policies = asyncio.run(self.retriever().values([item["unit"]], as_of))
                     gate = Arbitrator(Settings()).resolve(snap, policies, (proposal,))
                     if gate.rejected:
-                        rejected.append({"intervention": item, "reason": "; ".join(gate.rejected[0].reasons)})
+                        rejected.append({"intervention": item, "reason_code": "safety_constraint_rejected", "reason_params": {}})
                         continue
                 pools[key] = replace(pool, total=before + delta)
                 staff_delta[key] = staff_delta.get(key, 0) + delta
@@ -471,9 +493,9 @@ class App:
                 key, delta = f'{item["unit"]}:beds', int(item["delta"])
                 pool = pools.get(key)
                 if pool is None or pool.total + delta < pool.committed:
-                    rejected.append({"intervention": item, "reason": "bed change would fall below occupied beds or the bed pool is unavailable"})
+                    rejected.append({"intervention": item, "reason_code": "bed_change_below_occupied", "reason_params": {}})
                 elif delta > 0:
-                    notes.append({"intervention": item, "status": "assumed", "warning": "physical ceiling, staffed-bed authorization and equipment capacity are not verifiable from this data"})
+                    notes.append({"intervention": item, "status": "assumed", "warning_code": "bed_change_unverified", "warning_params": {}})
                 else:
                     pools[key] = replace(pool, total=pool.total + delta)
             elif kind == "or_closed":
@@ -484,14 +506,14 @@ class App:
                 booking = snap.booking(bid)
                 target_key = SlotKey("OR", target["resource_id"], datetime.fromisoformat(target["start"]))
                 if booking is None:
-                    rejected.append({"intervention": item, "reason": "booking_id is unknown at this as_of"})
+                    rejected.append({"intervention": item, "reason_code": "booking_unknown_at_as_of", "reason_params": {}})
                     continue
                 proposal = Proposal(f"scenario-{len(accepted_moves)}", "scenario", "Requested surgery move",
                                     (Reschedule(bid, booking.slot, target_key),), ())
                 test_snapshot = replace(snap, pools=pools, slots=tuple(slots))
                 resolution = Arbitrator(Settings()).resolve(test_snapshot, PolicyBundle(), (proposal,))
                 if resolution.rejected:
-                    rejected.append({"intervention": item, "reason": "; ".join(resolution.rejected[0].reasons)})
+                    rejected.append({"intervention": item, "reason_code": "safety_constraint_rejected", "reason_params": {}})
                 else:
                     accepted_moves.append((proposal, item))
                     # Subsequent proposals see this booking and occupancy change.
@@ -504,7 +526,7 @@ class App:
             points = [value for value in weekday_values(f"{unit}:occupancy") if value is not None]
             pool = snap.pools.get(f"{unit}:beds")
             if not points or pool is None:
-                demand[unit] = {"status": "abstain", "reason": "no weekday-mean baseline available"}
+                demand[unit] = {"status": "abstain", "reason_code": "no_weekday_mean_baseline", "reason_params": {}}
                 continue
             scale = self.twin.beds_total.get(unit, 0) * multipliers[unit]
             peak = max(float(value) * scale for value in points)
@@ -532,24 +554,25 @@ class App:
                     if donor_pool:
                         donor_headroom += max(0, donor_pool.total - math.ceil(demand[donor]["demand"] - 1e-9))
                 row["donor_headroom_beds"] = donor_headroom
-                row["why_nothing_moved"] = ("no shortfall under this baseline assumption" if not row["shortfall"] else
-                                             "no sourced transfer policy or verified staffed-bed/equipment ceiling")
-                row["what_would_help"] = ([f"verify transfer policy; up to {donor_headroom} donor beds appear unused in the baseline"]
-                                           if row["shortfall"] and donor_headroom else
-                                           ["verify staffed-bed and equipment ceiling from operational sources"]
-                                           if row["shortfall"] else ["no capacity action indicated by this assumption"])
+                row["why_nothing_moved"] = ({"code": "no_shortfall_under_assumption", "params": {}} if not row["shortfall"] else
+                                             {"code": "no_verified_capacity_action", "params": {}})
+                row["what_would_help"] = ([{"code": "verify_transfer_policy", "params": {"beds": donor_headroom}}
+                                            if row["shortfall"] and donor_headroom else
+                                            {"code": "verify_staffed_bed_ceiling", "params": {}}
+                                            if row["shortfall"] else {"code": "no_capacity_action_indicated", "params": {}}])
                 verified = max(0, int(verified_capacity_changes.get(unit, 0)))
                 residual = max(0, row["shortfall"] - verified)
                 row["verified_action_beds"] = verified
                 row["residual_shortfall_beds"] = residual
-                row["residual_message"] = (f"unresolved shortfall {residual} beds: no verified action can cover it; needs manager/escalation"
+                row["residual_message"] = ({"code": "unresolved_shortfall", "params": {"beds": residual}}
                                            if residual else None)
                 if residual:
-                    row["what_would_help"] = list(dict.fromkeys([*row["what_would_help"],
-                                                                 "manager or operations escalation for the unresolved residual"]))
+                    escalation = {"code": "manager_escalation", "params": {"beds": residual}}
+                    if escalation not in row["what_would_help"]:
+                        row["what_would_help"].append(escalation)
         arrivals = [value for value in weekday_values("er_arrivals") if value is not None]
-        doctor_demand = {u: {"status": "abstain", "reason": "no doctor-demand baseline in the data pack"} for u in BED_UNITS}
-        resources = {u: {"status": "abstain", "reason": "no resource-demand baseline in the data pack"} for u in BED_UNITS}
+        doctor_demand = {u: {"status": "abstain", "reason_code": "no_doctor_demand_baseline", "reason_params": {}} for u in BED_UNITS}
+        resources = {u: {"status": "abstain", "reason_code": "no_resource_demand_baseline", "reason_params": {}} for u in BED_UNITS}
         return {"before_after_delta": {u: {"label": demand[u].get("label"),
                                                   "baseline_shortfall": (max(0, math.ceil(demand[u]["baseline"] - 1e-9) - initial_snapshot.pools[f"{u}:beds"].total) if demand[u].get("status") == "assumption" else None),
                                                   "scenario_shortfall": demand[u].get("shortfall"), "delta": demand[u].get("delta_shortfall")}
@@ -559,7 +582,7 @@ class App:
                                 "scenario_mean": round(sum(arrivals) / len(arrivals) * arrivals_multiplier, 2) if arrivals else None},
                 "doctor_demand": doctor_demand, "resource_demand": resources,
                 "reschedules_accepted": [x[1] for x in accepted_moves], "rejected": rejected, "notes": notes,
-                "wait_revenue_overtime": {k: {"status": "unavailable", "reason": "no calibrated simulation inputs"} for k in ("wait", "revenue", "overtime")},
+                "wait_revenue_overtime": {k: {"status": "unavailable", "reason_code": "no_calibrated_simulation_inputs", "reason_params": {}} for k in ("wait", "revenue", "overtime")},
                 "seed": scenario.seed}
 
     def _persist_simulation(self, scenario, result, as_of):
@@ -619,16 +642,22 @@ class App:
         with self.lock:
             fp, rev, seq = self.policy_fingerprint(), self.store.revision, self.store.next_seq()
             context = f"{scenario.unit}x{scenario.demand_multiplier:g}|policy:{fp[:12]}|run:{seq}"
-            decision = asyncio.run(self._orchestrator(body.get("language", "ar"), self.audit, use_llm=True).run(self._inputs(as_of, scenario), context))
+            inputs = self._inputs(as_of, scenario)
+            orchestrator = self._orchestrator(body.get("language", "ar"), self.audit, use_llm=True)
+            decision = asyncio.run(orchestrator.run(inputs, context))
             view = decision.to_dict()
             language = body.get("language") if body.get("language") in ("ar", "en") else "ar"
+            verified_beds = {u: int(decision.card.capacity_added.get(f"{u}:beds", 0)) for u in BED_UNITS}
+            scenario_core = self._scenario_core(as_of, scenario, inputs.twin, verified_beds)
             key = (as_of.isoformat(), scenario.unit, scenario.demand_multiplier, rev, fp)
             for rec in self.store.records.values():       # an identical earlier pending run is replaced by this one
                 if rec["status"] == "PENDING" and rec["key"] == list(key):
                     rec["status"] = "SUPERSEDED"
-            # A decision with nothing to apply is closed on creation: it must never sit in the approval queue as PENDING.
+            # A residual assumption-based shortfall is an escalation, never a "no action required" outcome.
             reason = no_action_reason(decision)
-            status = "PENDING" if reason is None else "NO_ACTION"
+            residual_total = sum(int((row or {}).get("residual_shortfall_beds", 0) or 0)
+                                 for row in scenario_core.get("bed_demand", {}).values())
+            status = ("PENDING" if reason is None else "ESCALATE" if residual_total > 0 else "NO_ACTION")
             now = datetime.now(timezone.utc).isoformat()
             for item, code_list in zip(view["rejected"], reason_codes(decision)):
                 item["reason_codes"] = code_list
@@ -637,15 +666,21 @@ class App:
                                         "assumed" if prop.effects else "none")
             view.update(status=status, as_of=as_of.isoformat(), scenario=to_jsonable(scenario), sandbox_rev=rev, policy_fp=fp,
                         seq=seq, key=list(key), created_by=actor,
-                        decided_by="system" if reason else None, decided_at=now if reason else None,
-                        note=render(reason, language) if reason else None,
-                        no_action_code=reason.code if reason else None, language=language,
+                        decided_by="system" if reason and status == "NO_ACTION" else None,
+                        decided_at=now if reason and status == "NO_ACTION" else None,
+                        note=render(reason, language) if reason and status == "NO_ACTION" else None,
+                        escalation_note=None,
+                        no_action_code=("manager_escalation" if status == "ESCALATE" else reason.code if reason else None), language=language,
+                        scenario_core=scenario_core,
                         texts=decision_texts(decision, language))
             self.store.records[decision.id] = view
             self.store.save()
-            self.log(actor, "decision.created" if not reason else "decision.created_no_action", decision=decision.id, scenario=scenario,
+            self.log(actor, "decision.created" if not reason else "decision.created_escalation" if status == "ESCALATE" else "decision.created_no_action", decision=decision.id, scenario=scenario,
                      accepted=len(view["accepted"]), status=status)
-            return self.view(decision.id, language)
+            response = self.view(decision.id, language)
+            # Ephemeral UI-only suggestions: never stored in the decision, card, reports, or sandbox.
+            response["unrelated_suggestions"] = orchestrator.unrelated_suggestions
+            return response
 
     def _record(self, decision_id: str) -> dict:
         rec = self.store.records.get(decision_id)
@@ -670,6 +705,13 @@ class App:
         texts = rec.get("texts") or {}
         out = overlay({k: v for k, v in rec.items() if k != "texts"}, texts, lang) if texts \
             else {k: v for k, v in rec.items() if k != "texts"}
+        if rec.get("status") == "ESCALATE":
+            residual = sum(int((row or {}).get("residual_shortfall_beds", 0) or 0)
+                           for row in (rec.get("scenario_core", {}).get("bed_demand", {}) or {}).values())
+            message = Msg("decision.escalation", beds=residual).render(lang)
+            out["no_action_reason"] = message
+            out["note"] = message
+            out["no_action_code"] = "manager_escalation"
         return {**out, "stale": reason is not None, "stale_reason": reason}
 
     def decisions(self, lang: str | None = None) -> list[dict]:
@@ -683,6 +725,7 @@ class App:
                         "decided_at": rec["decided_at"], "note": rec["note"], "as_of": rec["as_of"], "scenario": rec["scenario"],
                         "accepted": len(rec["accepted"]), "rejected": len(rec["rejected"]),
                         "no_action_code": rec.get("no_action_code"), "unmet": dict(rec["card"].get("unmet") or {}),
+                        "scenario_core": rec.get("scenario_core"), "escalation_note": rec.get("escalation_note"),
                         "bottleneck": rec["card"]["critical_bottleneck"], "summary": texts.get("summary") or rec["explanation"]["text"]})
         return out
 
@@ -720,6 +763,8 @@ class App:
         actor = self._need(principal, "decide")
         with self.lock:
             rec = self._record(decision_id)
+            if rec["status"] == "ESCALATE":
+                raise ApiError(HTTPStatus.CONFLICT, "ESCALATE has no verified action to approve or apply; acknowledge or escalate it instead")
             if rec["status"] == "NO_ACTION":
                 raise ApiError(HTTPStatus.CONFLICT, "nothing to apply: this decision has no action and was closed automatically (NO_ACTION)")
             if rec["status"] != "PENDING":
@@ -748,6 +793,21 @@ class App:
 
     def reject(self, decision_id: str, body: dict, principal: Principal | None = None) -> dict:
         return self._decide(decision_id, principal, "reject", str(body.get("reason", "")))
+
+    def acknowledge_escalation(self, decision_id: str, body: dict, principal: Principal | None = None) -> dict:
+        actor = self._need(principal, "decide")
+        note = str(body.get("note", "")).strip()[:300]
+        if not note:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "an acknowledge/escalate note is required")
+        with self.lock:
+            rec = self._record(decision_id)
+            if rec["status"] != "ESCALATE":
+                raise ApiError(HTTPStatus.CONFLICT, "only ESCALATE decisions can be acknowledged")
+            rec.update(escalation_note=note, escalation_acknowledged_by=f"{actor.username} ({actor.label})",
+                       escalation_acknowledged_at=datetime.now(timezone.utc).isoformat())
+            self.store.save()
+            self.log(actor.username, "decision.escalation_acknowledged", decision=decision_id, role=actor.role, note=note)
+            return self.view(decision_id)
 
     def rollback(self, body: dict, principal: Principal | None = None) -> dict:
         """Undo the most recently applied decision (last in, first out keeps the sandbox consistent)."""
@@ -848,6 +908,12 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(HTTPStatus.NOT_FOUND, "not found")
         self._send(200, path.read_bytes(), CONTENT_TYPES[path.suffix])
 
+    def _ui_static(self, rel: str) -> None:
+        path = (UI / rel).resolve()
+        if UI.resolve() not in path.parents or path.suffix not in CONTENT_TYPES or not path.is_file():
+            raise ApiError(HTTPStatus.NOT_FOUND, "not found")
+        self._send(200, path.read_bytes(), CONTENT_TYPES[path.suffix])
+
     def _principal(self) -> Principal | None:
         header = self.headers.get("Authorization", "")
         return self.app.auth.principal(header[7:] if header.startswith("Bearer ") else None)
@@ -857,9 +923,13 @@ class Handler(BaseHTTPRequestHandler):
         parts = [p for p in url.path.split("/") if p]
         try:
             if method == "GET" and not parts:
-                return self._send(200, (ROOT / "dashboard.html").read_bytes(), "text/html")
+                return self._send(200, (UI / "dashboard.html").read_bytes(), "text/html")
             if method == "GET" and parts[:1] == ["static"]:
-                return self._static(unquote("/".join(parts[1:])))
+                raise ApiError(HTTPStatus.NOT_FOUND, "legacy static assets are not served")
+            if method == "GET" and parts[:1] == ["ui"]:
+                return self._ui_static(unquote("/".join(parts[1:])))
+            if method == "GET" and not parts[:1] == ["api"] and "." not in parts[-1:]:
+                return self._send(200, (UI / "dashboard.html").read_bytes(), "text/html")
             body = {}
             if method == "POST":
                 n = int(self.headers.get("Content-Length") or 0)
@@ -909,8 +979,9 @@ class Handler(BaseHTTPRequestHandler):
             elif parts[:2] == ["api", "simulations"] and len(parts) == 4 and parts[3] == "replay" and method == "POST":
                 a._need(principal, "run")
                 result = a.replay_simulation(parts[2])
-            elif method == "POST" and len(parts) == 4 and parts[:2] == ["api", "decisions"] and parts[3] in ("approve", "reject"):
-                result = getattr(a, parts[3])(parts[2], body, principal)
+            elif method == "POST" and len(parts) == 4 and parts[:2] == ["api", "decisions"] and parts[3] in ("approve", "reject", "acknowledge-escalation"):
+                method_name = "acknowledge_escalation" if parts[3] == "acknowledge-escalation" else parts[3]
+                result = getattr(a, method_name)(parts[2], body, principal)
             else:
                 raise ApiError(HTTPStatus.NOT_FOUND, "not found")
             self._send(200, result)

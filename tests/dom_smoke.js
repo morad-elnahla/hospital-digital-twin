@@ -25,12 +25,12 @@ class FNode {
   click() { for (const f of this.listeners.click || []) f({ target: this, preventDefault() {} }); }
 }
 const ids = {};
-for (const m of fs.readFileSync(path.join(root, "dashboard.html"), "utf8").matchAll(/id="([\w-]+)"/g)) ids[m[1]] = Object.assign(new FNode("div"), { attrs: { id: m[1] } });
+for (const m of fs.readFileSync(path.join(root, "ui", "dashboard.html"), "utf8").matchAll(/id="([\w-]+)"/g)) ids[m[1]] = Object.assign(new FNode("div"), { attrs: { id: m[1] } });
 const doc = new FNode("#document"); doc.documentElement = new FNode("html"); doc.body = new FNode("body");
 Object.assign(doc, { getElementById: id => ids[id], createElement: t => new FNode(t), createElementNS: (n, t) => new FNode(t), createTextNode: s => Object.assign(new FNode("#text"), { _text: s }),
   querySelectorAll: sel => Object.values(ids).flatMap(n => n.querySelectorAll(sel)).concat(sel === "[data-t]" || sel === "[data-tp]" ? [] : []) });
 // elements with data-t / data-tp in the static HTML
-const html = fs.readFileSync(path.join(root, "dashboard.html"), "utf8");
+const html = fs.readFileSync(path.join(root, "ui", "dashboard.html"), "utf8");
 const statics = [];
 for (const m of html.matchAll(/<(\w+)[^>]*\bdata-(t|tp)="(\w+)"[^>]*>/g)) { const n = new FNode(m[1]); n.attrs["data-" + m[2]] = m[3]; statics.push(n); }
 doc.querySelectorAll = sel => statics.filter(n => n.matches(sel));

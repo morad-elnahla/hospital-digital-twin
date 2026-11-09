@@ -132,11 +132,11 @@ class Agents(unittest.TestCase):
 
     def test_apply_then_rollback_restores_the_snapshot(self):
         pol = PolicyBundle({f"nurse.max_patients_per_nurse:{u}": PolicyValue(40, "test") for u in ("ICU", "WARD")})
-        d = decide(Scenario("ICU", 12), pol)
+        d = decide(Scenario("CLINIC", 12), pol)
         snap = td.snapshot(AS_OF)
         applied = apply_actions(snap, [a for p in d.accepted for a in p.actions])
         self.assertTrue(d.accepted)
-        self.assertNotEqual(applied.bookings, snap.bookings)  # R4 changes OR dates, not staffed bed capacity
+        self.assertNotEqual(applied.bookings, snap.bookings)  # Clinic booking moves change slots, not staffed bed capacity.
         restored = apply_actions(applied, d.rollback_actions)
         self.assertEqual(restored.pools, snap.pools)
         self.assertEqual({s.key: s.booked for s in restored.slots}, {s.key: s.booked for s in snap.slots})

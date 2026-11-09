@@ -15,6 +15,6 @@ def test_remove_two_rostered_icu_doctors_changes_coverage_without_wait_claim():
         out = app._scenario_core(as_of, scenario, snapshot)
         assert out["staff_delta"]["ICU:doctors"] == -2
         assert out["wait_revenue_overtime"]["wait"]["status"] == "unavailable"
-        assert "calibrated" in out["wait_revenue_overtime"]["wait"]["reason"]
+        assert out["wait_revenue_overtime"]["wait"]["reason_code"] == "no_calibrated_simulation_inputs"
     finally:
         temp.cleanup()

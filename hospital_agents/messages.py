@@ -156,6 +156,7 @@ CATALOG: dict[str, tuple[str, str]] = {
     "arb.joint": ("removed in joint check - {reasons}", "أُزيل في الفحص المشترك - {reasons}"),
     # ───────── executive card ─────────
     "as.forecast": ("forecast {model}, planned on its {stat} value", "التوقع {model}، والتخطيط على قيمته {stat}"),
+    "forecast.point_no_interval": ("point (no calibrated interval)", "تقدير نقطي (من دون نطاق معاير)"),
     "as.twin": ("twin snapshot {version}", "لقطة التوأم {version}"),
     "as.target": ("target utilisation {kind}={value:g}", "نسبة الاستخدام المستهدفة {kind}={value:g}"),
     "as.beds_per_procedure": ("each rescheduled procedure is ASSUMED to free {beds:g} {beds:bed/beds}; this is not simulated and is not subtracted from the confirmed deficit",
@@ -170,16 +171,18 @@ CATALOG: dict[str, tuple[str, str]] = {
                    "and would be {unmet_assumed} only if that assumption holds",
                    "{pool}: يُفترض أن التأجيلات المقبولة تخفف {relief:g} سرير من الطلب؛ العجز المؤكد يبقى {unmet}، "
                    "ويصبح {unmet_assumed} فقط إذا صح هذا الافتراض"),
-    "warn.baseline_ratio": ("{unit}: before any change, {beds} {beds:bed/beds} / {nurses} {nurses:nurse/nurses} on shift already exceeds {limit:g} {limit:patient/patients} per nurse "
-                            "(nurses counted at the replay moment; the shift table is uneven)",
-                            "{unit}: قبل أي تغيير، {beds} سرير لكل {nurses} ممرض في الوردية يتجاوز أصلًا {limit:g} مريض لكل ممرض "
-                            "(عدد الممرضين عند لحظة إعادة التشغيل وجدول الورديات غير منتظم)"),
+    "warn.baseline_ratio": ("{unit}: {beds} {beds:bed/beds} / {nurses} {nurses:nurse/nurses} on shift compared with an unapproved ratio "
+                            "({limit:g}:1; template ratios are 2:1 ICU / 3:1 ward and neither is approved)",
+                            "{unit}: {beds} سرير / {nurses} ممرض في الوردية مقارنةً بنسبة غير معتمدة "
+                            "({limit:g}:1؛ النسب النموذجية 2:1 للعناية المركزة و3:1 للداخلي، ولا واحدة منهما معتمدة)"),
     "none.reason.no_proposals": ("No agent proposed an action: there is no forecast shortfall to cover.",
                                  "لم يقترح أي وكيل إجراءً: لا يوجد عجز متوقع يحتاج إلى تغطية."),
     "none.reason.all_rejected": ("{n} {n:proposal/proposals} {n:was/were} rejected by the hard constraints; nothing remains to apply.",
                                  "رُفض {n} اقتراح بسبب القيود الصارمة ولا يوجد ما يمكن تطبيقه."),
     "none.reason.advisory": ("Only advisory alerts were produced; there is nothing to apply to the sandbox.",
                              "صدرت تنبيهات استشارية فقط؛ لا يوجد ما يُطبَّق على بيئة الاختبار."),
+    "decision.escalation": ("Unresolved shortfall {beds} {beds:bed/beds}: no verified action can cover it; manager escalation is needed.",
+                             "عجز متبقٍ {beds} سرير: لا يغطيه أي إجراء متحقق منه؛ يلزم تصعيده إلى المدير."),
     "stale.sandbox": ("the sandbox changed after this decision was computed", "تغيّرت بيئة الاختبار بعد حساب هذا القرار"),
     "stale.policy": ("a policy changed after this decision was computed", "تغيّرت سياسة بعد حساب هذا القرار"),
     # ───────── what-if page ─────────

@@ -144,6 +144,11 @@ def _rolling(values: dict[date, float], stop: date) -> dict:
 
 
 def _targets(td) -> dict[str, dict]:
+    # TwinData instances are immutable replay snapshots. Target extraction scans the
+    # full nursing roster, so reuse the indexed targets across scenarios on one snapshot.
+    cached = getattr(td, "_phase3_targets_cache", None)
+    if cached is not None:
+        return cached
     vals: dict[str, dict[date, float]] = defaultdict(dict)
     for day_text, departments in td.metrics.items():
         day = date.fromisoformat(day_text)
@@ -174,8 +179,10 @@ def _targets(td) -> dict[str, dict]:
             alias = f"{unit}:nurses"
             vals[alias][day] = max(vals[alias].get(day, 0.0), value)
 
-    return {key: {"values": value, "table": "nurse_coverage_shift_detail" if key.endswith(":nurses") else "daily_metrics"}
-            for key, value in vals.items()}
+    targets = {key: {"values": value, "table": "nurse_coverage_shift_detail" if key.endswith(":nurses") else "daily_metrics"}
+               for key, value in vals.items()}
+    td._phase3_targets_cache = targets
+    return targets
 
 
 def build(td, as_of: datetime) -> dict[str, dict]:

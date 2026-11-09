@@ -36,7 +36,9 @@ class Api(unittest.TestCase):
         with mock.patch.object(A, "TwinData", return_value=_SHARED_TWIN):
             self.srv = A.make_server(ROOT / "data", 0, runtime=self.tmp / "rt", policy_dir=self.tmp / "pol")
         self.app, self.port = A.Handler.app, self.srv.server_address[1]
-        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        # Shrink the stdlib server's default 500ms shutdown poll interval; each test
+        # owns a fresh server, so the default adds ~13 seconds across this file.
+        threading.Thread(target=self.srv.serve_forever, kwargs={"poll_interval": 0.001}, daemon=True).start()
 
     def stop(self):
         self.srv.shutdown()
@@ -116,81 +118,70 @@ class Api(unittest.TestCase):
     # ── lifecycle ──
     def test_full_decision_lifecycle(self):
         self.set_policies()
-        scenario_with_intervention = {**STRESS, "interventions": [{"type": "demand_change", "unit": "ICU", "x": 1.3}]}
-        _, d = self.call("/api/run", scenario_with_intervention, "analyst")
-        self.assertEqual((d["status"], d["stale"]), ("PENDING", False))
-        self.assertEqual(d["scenario"]["interventions"][0]["type"], "demand_change")
-        self.assertTrue(d["accepted"])
-        self.assertTrue(all(p["agent"] == "appointment" for p in d["accepted"]))  # OR team IDs are absent, so moves fail closed
-        self.assertTrue(any("rolling-origin validation is missing" in note for r in d["reports"]
-                            if r["agent"] == "or" for note in r["notes"]))
-        s, a = self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")
-        self.assertEqual((s, a["status"], a["decided_by"]), (200, "APPLIED", "manager (Operations Manager)"))
-        self.assertEqual(self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")[0], 409)
-        _, d2 = self.call("/api/run", STRESS, "analyst")
-        self.assertFalse(any(p["agent"] == "bed" for p in d2["accepted"]))
-        self.assertFalse(any(p["agent"] == "or" for p in d2["accepted"]))  # no repeat of already moved bookings
-        s, r = self.call("/api/rollback", {}, "manager")
-        self.assertEqual((s, r["status"]), (200, "ROLLED_BACK"))
+        d = self.call("/api/run", {**STRESS, "multiplier": 12}, "analyst")[1]
+        self.assertEqual((d["status"], d["accepted"], d["card"]["recommended_actions"]), ("ESCALATE", [], []))
+        self.assertEqual(d["no_action_code"], "manager_escalation")
+        self.assertIn("Unresolved shortfall 101 beds", d["note"])
+        self.assertNotIn("no forecast shortfall", d["note"])
+        self.assertTrue(d["scenario_core"]["bed_demand"]["ICU"]["residual_message"])
+        self.assertEqual(d["scenario_core"]["bed_demand"]["ICU"]["what_would_help"][-1]["code"], "manager_escalation")
+        code, refusal = self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")
+        self.assertEqual(code, 409)
+        self.assertIn("ESCALATE", refusal["error"])
         self.assertEqual(self.call("/api/sandbox", who="viewer")[1]["applied"], [])
+        code, ack = self.call(f"/api/decisions/{d['id']}/acknowledge-escalation", {"note": "Escalated to bed manager"}, "manager")
+        self.assertEqual((code, ack["status"], ack["escalation_note"]), (200, "ESCALATE", "Escalated to bed manager"))
         actions = [e["action"] for e in self.call("/api/audit", who="viewer")[1]]
-        for expected in ("decision.approved_and_applied_in_sandbox", "decision.rolled_back", "policy.set", "decision.created", "auth.login"):
-            self.assertIn(expected, actions)
-        self.assertEqual({e["actor"] for e in self.call("/api/audit", who="viewer")[1] if e["action"] == "decision.rolled_back"}, {"manager"})
+        self.assertIn("decision.created_escalation", actions)
+        self.assertIn("decision.escalation_acknowledged", actions)
 
-    def test_decisions_survive_a_restart_and_can_be_rolled_back(self):
+    def test_escalation_decisions_survive_a_restart_and_cannot_be_applied(self):
         self.set_policies()
         _, d = self.call("/api/run", STRESS, "analyst")
-        self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")
+        self.assertEqual(d["status"], "ESCALATE")
         self.stop()
         self.start()
         self.tokens.clear()
         listed = {x["id"]: x for x in self.call("/api/decisions", who="viewer")[1]}
-        self.assertEqual(listed[d["id"]]["status"], "APPLIED")
-        self.assertEqual(len(self.call("/api/sandbox", who="viewer")[1]["applied"]), 1)
-        s, r = self.call("/api/rollback", {}, "manager")
-        self.assertEqual((s, r["status"]), (200, "ROLLED_BACK"))
+        self.assertEqual(listed[d["id"]]["status"], "ESCALATE")
+        self.assertEqual(self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")[0], 409)
         self.assertEqual(self.call("/api/sandbox", who="viewer")[1]["applied"], [])
 
-    def test_pending_decision_survives_a_restart_and_can_still_be_approved(self):
+    def test_scenario_run_without_relevant_actions_closes_as_no_action(self):
         self.set_policies()
         _, d = self.call("/api/run", STRESS, "analyst")
-        self.stop()
-        self.start()
-        self.tokens.clear()
-        self.assertEqual(self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")[1]["status"], "APPLIED")
+        self.assertEqual(d["status"], "ESCALATE")
+        self.assertEqual(d["accepted"], [])
+        self.assertEqual(self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")[0], 409)
 
-    def test_stale_after_a_sandbox_or_policy_change(self):
+    def test_escalation_decisions_remain_closed_after_policy_changes(self):
         self.set_policies()
         _, first = self.call("/api/run", STRESS, "analyst")
         _, other = self.call("/api/run", {**STRESS, "as_of": "2026-10-16T08:00"}, "analyst")
         self.assertNotEqual(first["id"], other["id"])
-        self.call(f"/api/decisions/{other['id']}/approve", {}, "manager")
-        s, err = self.call(f"/api/decisions/{first['id']}/approve", {}, "manager")
-        self.assertEqual(s, 409)
-        self.assertIn("sandbox changed", err["error"])
-        self.call("/api/rollback", {}, "manager")
+        self.assertEqual((first["status"], other["status"]), ("ESCALATE", "ESCALATE"))
+        self.assertEqual(self.call(f"/api/decisions/{other['id']}/approve", {}, "manager")[0], 409)
+        self.assertEqual(self.call(f"/api/decisions/{first['id']}/approve", {}, "manager")[0], 409)
         _, third = self.call("/api/run", STRESS, "analyst")
         self.call("/api/policies", {"unit": "ICU", "value": 39}, "manager")
-        s, err = self.call(f"/api/decisions/{third['id']}/approve", {}, "manager")
-        self.assertEqual(s, 409)
-        self.assertIn("policy changed", err["error"])
-        self.assertTrue(self.call(f"/api/decisions/{third['id']}", who="viewer")[1]["stale"])
+        self.assertEqual(third["status"], "ESCALATE")
+        self.assertEqual(self.call(f"/api/decisions/{third['id']}/approve", {}, "manager")[0], 409)
+        self.assertFalse(self.call(f"/api/decisions/{third['id']}", who="viewer")[1]["stale"])
 
     def test_every_run_gets_its_own_id_and_identical_pending_runs_are_superseded(self):
-        self.set_policies()      # without a ratio policy the run has nothing to apply and closes as NO_ACTION, never PENDING
+        self.set_policies()
         _, a = self.call("/api/run", STRESS, "analyst")
         _, b = self.call("/api/run", STRESS, "analyst")
         self.assertNotEqual(a["id"], b["id"])
         statuses = {x["id"]: x["status"] for x in self.call("/api/decisions", who="viewer")[1]}
-        self.assertEqual((statuses[a["id"]], statuses[b["id"]]), ("SUPERSEDED", "PENDING"))
+        self.assertEqual((statuses[a["id"]], statuses[b["id"]]), ("ESCALATE", "ESCALATE"))
         self.assertEqual(self.call(f"/api/decisions/{a['id']}/approve", {}, "manager")[0], 409)
 
     def test_reject_records_reason_and_blocks_apply(self):
         self.set_policies()
         _, d = self.call("/api/run", STRESS, "analyst")
-        s, r = self.call(f"/api/decisions/{d['id']}/reject", {"reason": "not now"}, "manager")
-        self.assertEqual((s, r["status"], r["note"]), (200, "REJECTED", "not now"))
+        self.assertEqual(d["status"], "ESCALATE")
+        self.assertEqual(self.call(f"/api/decisions/{d['id']}/reject", {"reason": "not now"}, "manager")[0], 409)
         self.assertEqual(self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")[0], 409)
 
     # ── simulation preview ──
@@ -198,6 +189,7 @@ class Api(unittest.TestCase):
         self.set_policies()
         s, sim = self.call("/api/simulate", STRESS, "analyst")
         self.assertEqual(s, 200)
+        self.assertEqual((sim["status"], sim["decision"]["status"]), ("ESCALATE", "ESCALATE"))
         self.assertEqual(sim["bed_change"], {"ER": 0, "ICU": 0, "WARD": 0})
         self.assertEqual(sim["before"]["ICU"]["shortfall_beds"], sim["after"]["ICU"]["shortfall_beds"])
         self.assertEqual(sim["capacity_cost_change_egp_per_day"], 0)
@@ -236,19 +228,28 @@ class Api(unittest.TestCase):
         self.assertEqual(self.call(f"/api/decisions/{d['id']}/reject", {"reason": "nothing to do"}, "manager")[0], 409)
         self.assertEqual(self.call(f"/api/decisions/{d['id']}", who="viewer")[1]["status"], "NO_ACTION")
 
-    def test_sandbox_revision_stales_decisions_even_when_the_applied_count_is_unchanged(self):
+    def test_icu_run_filters_clinic_suggestions_at_every_multiplier(self):
+        for multiplier, expected_residual in ((12, 101), (1.3, 1)):
+            _, d = self.call("/api/run", {"unit": "ICU", "multiplier": multiplier, "language": "en"}, "analyst")
+            self.assertEqual(d["status"], "ESCALATE")
+            self.assertEqual(d["scenario_core"]["bed_demand"]["ICU"]["residual_shortfall_beds"], expected_residual)
+            self.assertEqual(d["accepted"], [])
+            self.assertEqual(d["card"]["recommended_actions"], [])
+            self.assertFalse(any(p["agent"] == "appointment" and p["proposals"] for p in d["reports"]))
+            self.assertGreater(len(d["unrelated_suggestions"]), 0)
+            # Suggestions are response-only and cannot be recovered from the stored decision.
+            stored = self.call(f"/api/decisions/{d['id']}", who="viewer")[1]
+            self.assertNotIn("unrelated_suggestions", stored)
+            self.assertEqual(self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")[0], 409)
+            self.assertEqual(self.call(f"/api/decisions/{d['id']}/acknowledge-escalation", {"note": ""}, "manager")[0], 400)
+            self.assertEqual(self.call("/api/sandbox", who="viewer")[1]["applied"], [])
+
+    def test_no_action_decisions_never_enter_the_sandbox_revision_queue(self):
         self.set_policies()
         _, a = self.call("/api/run", STRESS, "analyst")
-        # Make a second independently pending decision before the sandbox changes.
         _, pending = self.call("/api/run", {**STRESS, "multiplier": 11.9}, "analyst")
-        self.call(f"/api/decisions/{a['id']}/approve", {}, "manager")
-        self.assertEqual(pending["status"], "PENDING")
-        self.assertTrue(self.call(f"/api/decisions/{pending['id']}", who="viewer")[1]["stale"])
-        self.call("/api/rollback", {}, "manager")
-        _, c = self.call("/api/run", {**STRESS, "multiplier": 11.8}, "analyst")
-        self.call(f"/api/decisions/{c['id']}/approve", {}, "manager")
-        self.assertEqual(len(self.call("/api/sandbox", who="viewer")[1]["applied"]), 1)            # same length as when `pending` was made
-        self.assertTrue(self.call(f"/api/decisions/{pending['id']}", who="viewer")[1]["stale"])
+        self.assertEqual((a["status"], pending["status"]), ("ESCALATE", "ESCALATE"))
+        self.assertFalse(self.call(f"/api/decisions/{pending['id']}", who="viewer")[1]["stale"])
         self.assertEqual(self.call(f"/api/decisions/{pending['id']}/approve", {}, "manager")[0], 409)
 
     # ── LLM safety on the dashboard ──
@@ -261,7 +262,9 @@ class Api(unittest.TestCase):
         boom.assert_not_called()
 
     def test_the_api_key_never_appears_in_any_response_or_log(self):
-        with mock.patch.dict(os.environ, {"GROQ_API_KEY": "secret-key-123", "GROQ_BASE_URL": "http://127.0.0.1:1/v1"}):
+        # Avoid provider retry/backoff: this test checks key redaction, not network behavior.
+        with mock.patch.dict(os.environ, {"GROQ_API_KEY": "secret-key-123", "GROQ_BASE_URL": "http://127.0.0.1:1/v1"}), \
+             mock.patch("hospital_agents.llm.client.chat", side_effect=A.llm.LLMError("network")):
             self.call("/api/llm-test", {}, "analyst")
             self.call("/api/assistant", {"message": "how is the ICU?"}, "viewer")
             self.call("/api/run", STRESS, "analyst")
@@ -294,10 +297,8 @@ class Api(unittest.TestCase):
             html, csp = r.read().decode(), r.headers["Content-Security-Policy"]
         self.assertIn("default-src 'self'", csp)
         self.assertFalse([w for w in html.split() if w.startswith(("src=\"http", "href=\"http"))])
-        for asset in ("app.css", "app.js", "charts.js", "i18n.js"):
-            with urllib.request.urlopen(f"{base}/static/{asset}") as r:
-                self.assertEqual(r.status, 200)
-        for bad in ("/static/../app.py", "/static/%2e%2e/app.py", "/static/missing.js", "/static/"):
+        for bad in ("/static/app.css", "/static/app.js", "/static/charts.js", "/static/i18n.js",
+                    "/static/../app.py", "/static/%2e%2e/app.py", "/static/missing.js", "/static/"):
             with self.assertRaises(urllib.error.HTTPError) as cm:
                 urllib.request.urlopen(base + bad)
             self.assertEqual(cm.exception.code, 404, bad)

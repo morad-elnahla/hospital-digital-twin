@@ -181,6 +181,7 @@ def capacity(td: TwinData, as_of: datetime) -> dict:
 def staff(td: TwinData, as_of: datetime) -> dict:
     hist = _days(as_of, HISTORY_DAYS)
     pools = td.pools(as_of)
+    capacity_now = capacity(td, as_of)
     on_shift = [{"unit": k.split(":")[0], "kind": k.split(":")[1], "count": p.total}
                 for k, p in sorted(pools.items()) if k.split(":")[1] in STAFF_ROLES.values()]
     shifts_per_day = Counter(s[0].date().isoformat() for s in td.shifts)
@@ -205,7 +206,7 @@ def staff(td: TwinData, as_of: datetime) -> dict:
     return {
         "as_of": as_of.isoformat(), "history_period": _period(hist), "on_shift_now": on_shift,
         "observed_beds_per_nurse": {u: capacity_ratio for u, capacity_ratio in
-                                    ((u, capacity(td, as_of)["units"][u]["beds_occupied_per_nurse"]) for u in ("ER", "ICU", "WARD"))},
+                                    ((u, capacity_now["units"][u]["beds_occupied_per_nurse"]) for u in ("ER", "ICU", "WARD"))},
         "shifts_per_day": {"dates": hist, "values": [shifts_per_day.get(d, 0) for d in hist]},
         "absent_shifts_per_day": {"dates": hist, "values": [absent_per_day.get(d, 0) for d in hist]},
         "overtime_hours": {"dates": hist, "values": [round(sum(_num(r["overtime_hours"]) or 0 for r in td.metrics.get(d, {}).values()), 1) for d in hist]},

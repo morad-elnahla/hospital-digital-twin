@@ -1,4 +1,4 @@
-"""Isolated real-backend tests for R4 decision persistence, sandbox and rollback."""
+"""Isolated real-backend tests for scenario relevance and decision persistence."""
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DecisionR4Integration(unittest.TestCase):
-    def test_approve_rollback_and_no_csv_changes(self):
+    def test_icu_escalation_excludes_clinic_moves_and_leaves_csv_unchanged(self):
         with tempfile.TemporaryDirectory() as tmp:
             app = App(ROOT / 'data', Path(tmp) / 'rt', Path(tmp) / 'pol')
             p = Principal('reviewer', 'operations_manager')
@@ -23,14 +23,12 @@ class DecisionR4Integration(unittest.TestCase):
             self.assertEqual(preview['rescheduled_bookings'], 0)  # clinic shifts do not count as postponed surgeries; ICU model failed validation
             self.assertEqual(len(app.decisions()), 0)
             d = app.run(req, p)
-            self.assertEqual(d['status'], 'PENDING')
-            self.assertTrue(d['accepted'])
-            self.assertTrue(all(x['agent'] == 'appointment' for x in d['accepted']))
-            applied = app.approve(d['id'], {}, p)
-            self.assertEqual(applied['status'], 'APPLIED')
-            self.assertEqual(len(app.sandbox()['applied']), 1)
-            result = app.rollback({}, p)
-            self.assertEqual(result['status'], 'ROLLED_BACK')
+            self.assertEqual(d['status'], 'ESCALATE')
+            self.assertEqual(d['accepted'], [])
+            self.assertEqual(d['scenario_core']['bed_demand']['ICU']['residual_shortfall_beds'], 101)
+            with self.assertRaises(ApiError) as exc:
+                app.approve(d['id'], {}, p)
+            self.assertEqual(exc.exception.status, 409)
             self.assertEqual(app.sandbox()['applied'], [])
             after = {path.name: (path.stat().st_size, path.stat().st_mtime_ns) for path in data_files}
             self.assertEqual(before, after)

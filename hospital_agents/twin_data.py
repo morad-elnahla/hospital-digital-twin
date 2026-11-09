@@ -385,7 +385,7 @@ class TwinData:
         sim = SimulationBaseline(f"history-7d-before-{as_of.date()}", None,
                                  {"revenue_at_risk_egp": self.revenue_at_risk_7d(as_of)})
         kw = {"policies": policies} if policies is not None else {}
-        return SharedInputs(snap, self.forecast(as_of, scenario), sim, **kw)
+        return SharedInputs(snap, self.forecast(as_of, scenario), sim, scenario_unit=scenario.unit, **kw)
 
     def policy_docs(self) -> list[PolicyDoc]:
         """Text-only policies from the pack; never numeric constraints (they are test examples)."""

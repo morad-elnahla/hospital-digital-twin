@@ -100,7 +100,7 @@ def build_card(decision_id: str, inputs: SharedInputs, settings: Settings,
         confidence = round(fc * verified / len(accepted), 2)
 
     has_forecast_bound = any(p.hi is not None for points in inputs.forecast.series.values() for p in points)
-    forecast_stat = settings.forecast_stat if has_forecast_bound else "point (no calibrated interval)"
+    forecast_stat = settings.forecast_stat if has_forecast_bound else Msg("forecast.point_no_interval")
     assumptions = [Msg("as.forecast", model=inputs.forecast.model_version, stat=forecast_stat),
                    Msg("as.twin", version=inputs.twin.version)]
     assumptions += [Msg("as.target", kind=k, value=v) for k, v in sorted(settings.target_utilization.items())]

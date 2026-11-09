@@ -30,10 +30,9 @@ def test_combined_staff_cut_demand_surge_and_move_rejects_violations_and_is_mono
         scenario = app.parse_scenario({"as_of": as_of.isoformat(), "interventions": interventions})
         out = app._scenario_core(as_of, scenario, snapshot)
         assert len(out["rejected"]) >= 1
-        assert any("rostered" in x["reason"] for x in out["rejected"])
+        assert any(x["reason_code"] == "staff_reduction_exceeds_rostered" for x in out["rejected"])
         if booking and destination:
-            assert any(any(token in x["reason"].lower() for token in ("team", "specialty", "slot"))
-                       for x in out["rejected"])
+            assert any(x["reason_code"] == "safety_constraint_rejected" for x in out["rejected"])
     finally:
         temp.cleanup()
 

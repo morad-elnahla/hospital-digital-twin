@@ -19,6 +19,8 @@ RAW = json.loads((Path(__file__).parent / "fixtures" / "scenario.json").read_tex
 
 def inputs(mutate=None) -> SharedInputs:
     d = json.loads(json.dumps(RAW))
+    # This synthetic fixture exercises the full generic proposal pipeline, including clinic moves.
+    d["scenario_unit"] = "CLINIC"
     if mutate:
         mutate(d)
     return SharedInputs.from_dict(d)

@@ -94,6 +94,28 @@ class Orchestrator:
         inputs = dataclasses.replace(inputs, policies=await self._policies(inputs, version))
 
         reports = tuple(await asyncio.gather(*(self._run_agent(a, inputs) for a in self.agents)))
+        self.unrelated_suggestions: list[dict] = []
+        scenario_unit = inputs.scenario_unit or "ICU"
+        if scenario_unit in {"ER", "ICU", "WARD"}:
+            # Clinic appointment moves do not address hospital bed or ER demand. Keep them
+            # out of arbitration, the card, and persisted decisions; previews may show them
+            # separately as unrelated suggestions.
+            from dataclasses import replace
+            filtered_reports = []
+            for report in reports:
+                proposals = []
+                for proposal in report.proposals:
+                    relevant = []
+                    for action in proposal.actions:
+                        if isinstance(action, Reschedule) and action.from_slot.domain == "CLINIC":
+                            self.unrelated_suggestions.append({"proposal_id": proposal.id, "agent": proposal.agent,
+                                                               "action": to_jsonable(action)})
+                        else:
+                            relevant.append(action)
+                    if relevant:
+                        proposals.append(replace(proposal, actions=tuple(relevant)))
+                filtered_reports.append(replace(report, proposals=tuple(proposals)))
+            reports = tuple(filtered_reports)
         for r in reports:
             self._log("agent.completed" if not r.error else "agent.failed", version, agent=r.agent,
                       proposals=[p.id for p in r.proposals], notes=r.notes, error=r.error)

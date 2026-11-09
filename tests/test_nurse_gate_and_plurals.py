@@ -119,7 +119,11 @@ class ReportedScenarioEndToEnd(unittest.TestCase):
         d = self.app.run({"as_of": "2026-10-19T08:00", "unit": "ICU", "multiplier": 12, "language": "en"}, MGR)
         moved = [a for p in d["accepted"] for a in p["actions"] if "pool" in a]
         self.assertEqual(moved, [])
-        self.assertEqual(d["status"], "PENDING")  # validated appointment moves can remain actionable
+        self.assertEqual(d["status"], "ESCALATE")
+        self.assertEqual(d["accepted"], [])
+        self.assertTrue(d["unrelated_suggestions"])
+        self.assertFalse(any(p["agent"] == "appointment" and p["proposals"] for p in d["reports"]))
+        self.assertTrue(d["scenario_core"]["bed_demand"]["ICU"]["residual_message"])
         self.assertFalse(any(p["agent"] == "or" for p in d["accepted"]))
         self.assertTrue(any("rolling-origin validation is missing" in note for item in d["reports"]
                             if item["agent"] == "or" for note in item["notes"]))
@@ -177,7 +181,11 @@ class PluralAgreement(unittest.TestCase):
         cap = Msg("reb.nurse_cap", unit="ICU", nurses=1, ratio=1.0, max_beds=1, covered=1, wanted=3)
         self.assertIn("1 nurse on shift at 1 patient per nurse can staff at most 1 bed in ICU", cap)
         base = Msg("warn.baseline_ratio", unit="ICU", beds=12, nurses=1, limit=2.0)
-        self.assertIn("12 beds / 1 nurse on shift already exceeds 2 patients per nurse", base)
+        self.assertIn("12 beds / 1 nurse on shift compared with an unapproved ratio", base)
+        self.assertIn("template ratios are 2:1 ICU / 3:1 ward and neither is approved", base)
+        base_ar = base.render("ar")
+        self.assertIn("بنسبة غير معتمدة", base_ar)
+        self.assertIn("2:1 للعناية المركزة و3:1 للداخلي", base_ar)
 
     def test_executive_summary_wording(self):
         facts = {"decision_id": "d", "recommended_actions": ["a"], "rejected_count": 0, "critical_bottleneck": None,

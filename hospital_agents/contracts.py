@@ -153,6 +153,7 @@ class SharedInputs:
     forecast: Forecast
     simulation: SimulationBaseline | None = None
     policies: PolicyBundle = field(default_factory=PolicyBundle)
+    scenario_unit: str = "ICU"
 
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> "SharedInputs":
@@ -162,6 +163,7 @@ class SharedInputs:
             simulation=_baseline(d["simulation"]) if d.get("simulation") else None,
             policies=PolicyBundle({k: PolicyValue(float(v["value"]), v["source"])
                                    for k, v in d.get("policies", {}).items()}),
+            scenario_unit=d.get("scenario_unit") or "ICU",
         )
 
 
