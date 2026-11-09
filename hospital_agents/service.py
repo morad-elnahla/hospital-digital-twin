@@ -599,7 +599,7 @@ class App:
         return self.simulate(params)
 
     def save_scenario_draft(self, body: dict, principal: Principal | None = None) -> dict:
-        actor = self._need(principal, "run")
+        actor = self._need(principal, "preview")
         as_of = self.parse_as_of(body.get("as_of"))
         scenario = self.parse_scenario(body)
         from dataclasses import replace
@@ -614,7 +614,7 @@ class App:
         return draft
 
     def list_scenario_drafts(self, principal: Principal | None = None) -> list[dict]:
-        actor = self._need(principal, "run")
+        actor = self._need(principal, "preview")
         rows = self.scenario_drafts.values()
         if actor.role != "operations_manager":
             rows = (r for r in rows if r["created_by"] == actor.username)

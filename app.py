@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import hmac
+import hmac
 import logging
 import os
 import socket
@@ -248,11 +249,11 @@ def create_app(service: App | None = None) -> FastAPI:
     @web.get("/api/health", tags=["system"])
     def health(request: Request):
         a = svc(request)
+        # Liveness is public by default; deployments may require a dedicated probe token.
         health_token = os.environ.get("HDT_HEALTH_TOKEN", "")
-        token = request.headers.get("Authorization", "")
-        health_authorized = bool(health_token and hmac.compare_digest(token, f"Bearer {health_token}"))
-        if not health_authorized:
-            a._need(principal(request), "read")
+        authorization = request.headers.get("Authorization", "")
+        if health_token and not hmac.compare_digest(authorization, f"Bearer {health_token}"):
+            raise ApiError(HTTPStatus.UNAUTHORIZED, "health probe token required")
         return a.health()
 
     @web.get("/api/twin", tags=["operations"])
@@ -299,13 +300,13 @@ def create_app(service: App | None = None) -> FastAPI:
     def set_policy(payload: ApiBody, request: Request): return svc(request).set_policy(_body(payload), principal(request))
 
     @web.get("/api/scenario-drafts", tags=["scenarios"])
-    def scenario_drafts(request: Request): return svc(request).list_scenario_drafts(require(request, "run"))
+    def scenario_drafts(request: Request): return svc(request).list_scenario_drafts(require(request, "preview"))
 
     @web.post("/api/scenario-drafts", tags=["scenarios"])
-    def save_scenario_draft(payload: ApiBody, request: Request): return svc(request).save_scenario_draft(_body(payload), require(request, "run"))
+    def save_scenario_draft(payload: ApiBody, request: Request): return svc(request).save_scenario_draft(_body(payload), require(request, "preview"))
 
     @web.post("/api/simulate", tags=["scenarios"])
-    def simulate(payload: ApiBody, request: Request): return svc(request).simulate(_body(payload), require(request, "run"))
+    def simulate(payload: ApiBody, request: Request): return svc(request).simulate(_body(payload), require(request, "preview"))
 
     @web.post("/api/run", tags=["agents"])
     def run_agents(payload: ApiBody, request: Request): return svc(request).run(_body(payload), require(request, "run"))
@@ -315,7 +316,7 @@ def create_app(service: App | None = None) -> FastAPI:
 
     @web.post("/api/simulations/{simulation_id}/replay", tags=["scenarios"])
     def replay(simulation_id: str, request: Request):
-        require(request, "run")
+        require(request, "preview")
         return svc(request).replay_simulation(simulation_id)
 
     @web.get("/{spa_path:path}", include_in_schema=False)

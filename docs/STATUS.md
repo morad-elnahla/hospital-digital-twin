@@ -78,7 +78,7 @@ Every row is one separate pytest process. Durations are wall time and include pr
 ## Phase 5 — policies, roles, LLM/RAG — done
 
 - Added `policies/templates/er-nurse-ratio.md` with an empty `value` and `approved: false`. Manager entry saves an unapproved draft; only the explicit Approve action makes it available to hard constraints. No ratio value is supplied by the product.
-- Added the `clinician` role: read/run permissions allow preview and scenario draft creation, while `decide` and `policy` remain operations-manager-only. Scenario drafts persist under `runtime/scenario_drafts.json` and are auditable.
+- Added the `clinician` role: read/preview permissions allow scenario preview and draft creation; agent runs are analyst/manager-only; `decide` and `policy` are manager-only. Scenario drafts persist under `runtime/scenario_drafts.json` and are auditable.
 - Detailed LLM validation returns each failed claim and reason, records `llm.unsupported` to audit, and uses deterministic template text on rejection. Mock failure-path coverage exercises assurance language, unsupported numbers, missing citations, malformed output, and the fallback.
 - RAG evaluation uses 10 English and 10 Arabic questions at top-3: English **10/10 (100%)**, Arabic **0/10 (0%)**, overall **10/20 (50%)**. `docs/RAG_EVAL.md` and `docs/rag_eval_results.json` record the source-ID hit definition and result. Arabic retrieval is not supported by the current English-only corpus.
 - Phase 5 verification: `test_auth.py` **6 passed**, `test_app.py` **25 passed** (rerun after correcting the ER-template expectation), `test_assistant.py` **14 passed**, `test_policies.py` **10 passed**, new role/policy tests **2 passed**, RAG eval **1 passed**, frontend **3 passed / 1 skipped**. `node --check` and Python compile checks passed.
@@ -197,3 +197,10 @@ Latest `tests/*.py` verification: one fresh pytest process per file, **600-secon
 | `test_store.py` | 6 passed | 2.11s |
 
 Not verified: browser rendering, Docker build/run, GitHub Actions CI, Python 3.12 behavior, or clinical validity. `test_agent_fixes.py` and `test_r4_fix_and_routing.py` exceed 120 seconds but each passed under the 600-second file cap.
+
+## Local demo credentials and role audit
+
+- Local demo passwords are stored only in ignored `.env` using `HDT_MANAGER_PASSWORD`, `HDT_ANALYST_PASSWORD`, and `HDT_VIEWER_PASSWORD`; `.env.example` remains blank placeholders. `scripts/reset_users.py` deletes local users/sessions and recreates all four accounts. It printed the clinician password once. Actual API checks returned login 200, wrong-password 401, and post-logout 401 for all four roles. No passwords are stored in source or documentation.
+- `tests/test_role_matrix.py` read all API methods/paths from FastAPI OpenAPI and made requests as unauthenticated plus each role; the full HTTP status table is [ROLE_MATRIX.md](ROLE_MATRIX.md). It passed **3 tests in 35.80s**. In the generated matrix, public health returns 200 by default; when `HDT_HEALTH_TOKEN` is configured it requires that bearer token.
+- Backend permission split: viewer has `read`; clinician has `read` + `preview`; analyst has `read` + `preview` + `run`; operations manager has all five (`read`, `preview`, `run`, `decide`, `policy`). Clinicians can save/review drafts but cannot run agents or submit approval decisions. Server-side role spoofing, logout revocation, and five-failure lockout are tested.
+- Affected per-file checks after the role change: `test_auth.py` **8 passed / 8.59s**; `test_app.py` **26 passed / 75.14s**; `test_contract_keys.py` **1 passed / 19.26s**; `test_frontend.py` **3 passed / 1 skipped / 2.65s**; `test_phase5_roles_policy.py` **2 passed / 3.87s**; `test_role_matrix.py` **3 passed / 35.80s**. Lovable source: **40 passed**; production UI rebuilt and packaged with Node **24.21.0**. Browser rendering not verified.

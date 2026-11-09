@@ -6,8 +6,8 @@ stored as salted PBKDF2-HMAC-SHA256 hashes; sessions are random bearer tokens he
 
 Roles, least to most privileged:
     viewer              read dashboards
-    clinician           + author scenarios, run simulations and save drafts
-    analyst             + run agents and simulations
+    clinician           + preview scenarios and save drafts
+    analyst             + run agents, previews, and scenarios
     operations_manager  + approve / reject / roll back decisions, change policies
 """
 from __future__ import annotations
@@ -30,7 +30,8 @@ ROLES = ("viewer", "clinician", "analyst", "operations_manager")
 ROLE_LABELS = {"viewer": "Viewer", "clinician": "Clinician", "analyst": "Analyst", "operations_manager": "Operations Manager"}
 PERMISSIONS = {
     "read": ROLES,
-    "run": ("clinician", "analyst", "operations_manager"),
+    "preview": ("clinician", "analyst", "operations_manager"),
+    "run": ("analyst", "operations_manager"),
     "decide": ("operations_manager",),      # approve / reject / roll back
     "policy": ("operations_manager",),      # change structured policies
 }
@@ -100,7 +101,8 @@ class Auth:
     def _bootstrap(self) -> dict[str, str]:
         """Create the initial accounts together, or create none if configuration is invalid."""
         out, records = {}, {}
-        for name, role in (("manager", "operations_manager"), ("analyst", "analyst"), ("viewer", "viewer")):
+        for name, role in (("manager", "operations_manager"), ("analyst", "analyst"),
+                           ("viewer", "viewer"), ("clinician", "clinician")):
             env_name = f"HDT_{name.upper()}_PASSWORD"
             password = os.environ.get(env_name) or secrets.token_urlsafe(9)
             try:

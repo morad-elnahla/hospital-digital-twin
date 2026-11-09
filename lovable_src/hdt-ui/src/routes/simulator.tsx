@@ -41,7 +41,7 @@ function Simulator() {
   const [interventions, setInterventions] = useState<Intervention[]>([]);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
   const rooms = useHdt<any>("or").data?.by_room ?? [];
-  const drafts = useQuery({ queryKey: ["scenario-drafts", mode, user?.username], queryFn: () => api<any[]>("/api/scenario-drafts"), enabled: mode === "live" && !!user?.permissions.includes("run") });
+  const drafts = useQuery({ queryKey: ["scenario-drafts", mode, user?.username], queryFn: () => api<any[]>("/api/scenario-drafts"), enabled: mode === "live" && !!user?.permissions.includes("preview") });
   const body = useMemo(() => ({ as_of: asOf, unit, multiplier: mult, horizon, seed, interventions, language: lang, scenario_lab: true }), [asOf, unit, mult, horizon, seed, interventions, lang]);
   const currentKey = JSON.stringify(body);
   const sim = useMutation({ mutationFn: () => api<any>("/api/simulate", body), onSuccess: () => setPreviewKey(currentKey) });
@@ -92,9 +92,9 @@ function Simulator() {
         </div>
       </div>
       <div className="mt-5 flex flex-wrap gap-2">
-        <button disabled={!can("run") || sim.isPending} onClick={() => sim.mutate()} className="bg-brand inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50"><FlaskConical className="size-4" />{sim.isPending ? t("loading") : t("run_preview")}</button>
-        <button disabled={!previewValid || !can("run") || save.isPending} onClick={() => save.mutate()} title={!previewValid ? t("preview_stale") : undefined} className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold disabled:opacity-50"><Save className="size-4" />{t("save_scenario_draft")}</button>
-        <button disabled={!previewValid || !can("run") || run.isPending} onClick={() => run.mutate()} title={!can("decide") ? t("draft_manager_review") : t("submit_for_approval")} className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold disabled:opacity-50">{t("submit_for_approval")}</button>
+        <button disabled={!can("preview") || sim.isPending} onClick={() => sim.mutate()} className="bg-brand inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50"><FlaskConical className="size-4" />{sim.isPending ? t("loading") : t("run_preview")}</button>
+        <button disabled={!previewValid || !can("preview") || save.isPending} onClick={() => save.mutate()} title={!previewValid ? t("preview_stale") : undefined} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50"><Save className="size-4" />{t("save_scenario_draft")}</button>
+        <button disabled={!previewValid || !can("run") || run.isPending} onClick={() => run.mutate()} title={!can("run") ? t("no_permission") : t("submit_for_approval")} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50">{t("submit_for_approval")}</button>
       </div>
       <p className="mt-3 text-xs text-muted-foreground">{t("scenario_lab_note")} · {t("schematic")}</p>
       {sim.data && !previewValid && <p className="mt-2 text-xs font-semibold text-warn">{t("preview_stale")}</p>}
