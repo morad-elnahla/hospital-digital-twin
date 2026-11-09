@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🏥 Hospital Digital Twin
+<img src="https://capsule-render.vercel.app/api?type=waving&height=220&color=0:0F766E,50:0EA5E9,100:1E3A8A&text=Hospital%20Digital%20Twin&fontColor=FFFFFF&fontSize=48&fontAlignY=38&animation=fadeIn&desc=ZAWolf%20%C2%B7%20Hospital%20operations%2C%20made%20explorable&descAlignY=58&descSize=16" alt="Hospital Digital Twin" width="100%">
 
-### ZAWolf · Hospital operations, made explorable
+<a href="#-features"><img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=24&duration=3000&pause=800&color=0EA5E9&center=true&vCenter=true&width=620&lines=%F0%9F%8F%A5+Hospital+Digital+Twin;Observe+%E2%86%92+Analyze+%E2%86%92+Simulate+%E2%86%92+Decide;English+%2B+%D8%A7%D9%84%D8%B9%D8%B1%D8%A8%D9%8A%D8%A9;Safe+%C2%B7+Auditable+%C2%B7+Transparent" alt="Typing animation"></a>
 
 **Observe → Analyze → Simulate → Decide**
 
@@ -308,5 +308,7 @@ Phase history, per-file timings, remaining gaps, and resource/latency figures: [
 English + العربية · Synthetic data only
 
 <sub>Made with ❤️ by ZAWolf</sub>
+
+<img src="https://capsule-render.vercel.app/api?type=waving&height=120&section=footer&color=0:1E3A8A,50:0EA5E9,100:0F766E" width="100%">
 
 </div>
