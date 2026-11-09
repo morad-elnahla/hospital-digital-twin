@@ -81,7 +81,10 @@ class Dashboard(unittest.TestCase):
         for key in keys:
             self.assertGreaterEqual(len(re.findall(rf'\b{key}:', source)), 2, f"{key} must have Arabic and English strings")
         simulator = (ROOT / "lovable_src/hdt-ui/src/routes/simulator.tsx").read_text(encoding="utf-8")
-        self.assertIn("d.residual_message", simulator)
+        self.assertNotIn("d.residual_message", simulator)  # residual is rendered once by the shared DecisionView
+        decision_view = (ROOT / "lovable_src/hdt-ui/src/components/hdt/decision-view.tsx").read_text(encoding="utf-8")
+        self.assertIn("residual_shortfall_beds", decision_view)
+        self.assertIn('data-testid="decision-escalation"', decision_view)
         self.assertNotIn("{JSON.stringify(", simulator)
         agents = (ROOT / "lovable_src/hdt-ui/src/routes/agents.tsx").read_text(encoding="utf-8")
         self.assertIn("d.scenario_core", agents)
