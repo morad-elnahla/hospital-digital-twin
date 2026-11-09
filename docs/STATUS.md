@@ -63,6 +63,15 @@ Every row is one separate pytest process. Durations are wall time and include pr
 - Forecasts expose the training source, selected model, rolling scores and abstention reason. Lower/upper interval values are null because calibration coverage has not been measured; no ± standard-deviation interval is shown. The 7-day ICU point peak changes across a 16-month origin span (0.7548 on 2025-06-23; 0.7829 on 2026-10-17). Its trend-seasonal candidate fails the backtest at the latest origin, so the displayed point is the weekday baseline and it is not sent to agents.
 - Verification: `test_phase3_forecast.py` **4 passed**, `test_insights.py` **12 passed**, `test_data_pack.py` **16 passed**, `test_agents.py` **24 passed**, `test_agent_fixes.py` **24 passed**, `test_assistant.py` **13 passed**, `test_app.py` **22 passed**, `test_nurse_gate_and_plurals.py` **17 passed + 4 subtests**, `test_r4_decision_integration.py` **1 passed**, and `test_r4_fix_and_routing.py` **4 passed**. Each file ran in its own process.
 
+## Phase 4 — scenario contract + simulation core — done
+
+- Extended the backward-compatible `{unit, multiplier}` scenario with `as_of`, bounded `horizon`, typed interventions, data/policy versions, seed, and creator. Invalid types, ranges, known IDs, and past/out-of-horizon targets return HTTP 400. Scenario changes operate on copied immutable snapshots.
+- Deterministic core emits before/after shortfall and deltas, computed donor/headroom hints, staffing changes, and clear rejection reasons. ICU/WARD (and nurse) weekday means are labeled **"assumption: unvalidated baseline forecast"**; doctor/resource demand abstains. Wait, revenue, and overtime remain unavailable without calibrated inputs.
+- Bed additions remain explicitly assumed unless capacity/staffing/equipment authorization can be verified; current pack does not provide enough evidence. OR moves use the hard constraint gate: unverifiable teams refuse; compatible, open, free slots accept.
+- Each run and its scenario/result events are persisted to `simulation_runs`/`simulation_events`; the replay endpoint reruns the stored parameters with the same seed. No source CSV is changed.
+- The simulator UI now displays the weekday-mean estimate and staffing demand with the required assumption label; its text reflects per-run replay storage.
+- Acceptance: staff, bed, OR, and combined scenario files passed **1/1, 1/1, 2/2, 3/3** respectively; combined covers monotonic x1.3/x12 demand, validation, and replay determinism. Existing API suite **22 passed**, with the simulation preview case rerun **1 passed**; frontend checks **3 passed, 1 skipped**. Python 3.13 / Windows.
+
 ## Remaining verification limits
 
 - Python 3.12 behavior is unverified.

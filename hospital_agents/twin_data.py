@@ -54,9 +54,16 @@ STAFF_ROLES = {"NURSE": "nurses", "DOCTOR": "doctors"}
 
 @dataclass(frozen=True)
 class Scenario:
-    """What-if knob: multiply forecast bed demand of one unit (1.0 = no stress)."""
+    """Versioned deterministic what-if input; first two fields keep the v0 API compatible."""
     unit: str = "ICU"
     demand_multiplier: float = 1.0
+    as_of: str | None = None
+    horizon: int = FORECAST_DAYS
+    interventions: tuple[dict, ...] = ()
+    data_version: str = "csv-snapshot-v1"
+    policy_version: str = ""
+    seed: int = 0
+    created_by: str = ""
 
 
 def _dt(s: str) -> datetime:

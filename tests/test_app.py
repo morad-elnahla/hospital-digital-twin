@@ -172,7 +172,7 @@ class Api(unittest.TestCase):
         self.assertEqual(self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")[0], 409)
 
     # ── simulation preview ──
-    def test_simulation_preview_is_computed_and_does_not_store_anything(self):
+    def test_simulation_preview_is_computed_without_creating_a_decision(self):
         self.set_policies()
         s, sim = self.call("/api/simulate", STRESS, "analyst")
         self.assertEqual(s, 200)

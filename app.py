@@ -14,8 +14,11 @@ import asyncio
 import hashlib
 import json
 import math
+import sqlite3
 import threading
-from datetime import datetime, timezone
+import uuid
+from contextlib import closing
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -25,7 +28,8 @@ from hospital_agents import Orchestrator, Settings, insights, llm
 from hospital_agents.assistant import Assistant
 from hospital_agents.audit import InMemoryAudit, JsonlAudit
 from hospital_agents.auth import PERMISSIONS, Auth, AuthError, Principal
-from hospital_agents.contracts import PoolAdjustment, Reschedule, Proposal, action_from_dict, invert, to_jsonable
+from hospital_agents.contracts import (PoolAdjustment, Reschedule, Proposal, SlotKey, PolicyBundle,
+                                       action_from_dict, invert, to_jsonable)
 from hospital_agents.arbitration import Arbitrator
 from hospital_agents.explain import TemplateExplainer
 from hospital_agents.localize import decision_texts, has_sandbox_effect, no_action_reason, overlay, reason_codes
@@ -88,16 +92,89 @@ class App:
             raise ApiError(HTTPStatus.BAD_REQUEST, f"as_of must lie within {lo.date()} and {hi.date()}")
         return as_of
 
-    @staticmethod
-    def parse_scenario(body: dict) -> Scenario:
+    def parse_scenario(self, body: dict) -> Scenario:
         unit = body.get("unit", "ICU")
         try:
-            mult = float(body.get("multiplier", 1.0))
+            mult = float(body.get("multiplier", body.get("demand_multiplier", 1.0)))
         except (TypeError, ValueError):
             mult = math.nan
-        if unit not in ("ICU", "WARD") or not (math.isfinite(mult) and 0.1 <= mult <= 50):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "unit must be ICU or WARD and multiplier within 0.1-50")
-        return Scenario(unit, mult)
+        if unit not in ("ER", "ICU", "WARD") or not (math.isfinite(mult) and 0.1 <= mult <= 50):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "unit must be ER, ICU or WARD and multiplier within 0.1-50")
+        horizon = body.get("horizon", 7)
+        seed = body.get("seed", 0)
+        if isinstance(horizon, bool) or not isinstance(horizon, int) or not 1 <= horizon <= 30:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "horizon must be an integer from 1 to 30 days")
+        if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 2**31 - 1:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "seed must be an integer from 0 to 2147483647")
+        interventions = body.get("interventions", [])
+        if not isinstance(interventions, list) or len(interventions) > 100:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "interventions must be a list with at most 100 entries")
+        normalized = []
+        for i, raw in enumerate(interventions):
+            if not isinstance(raw, dict) or not isinstance(raw.get("type"), str):
+                raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] must be an object with a type")
+            kind = raw["type"]
+            item = dict(raw)
+            if kind == "demand_change":
+                u = item.get("unit")
+                x = item.get("x")
+                if u not in ("ER", "ICU", "WARD") or isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) or not 0.1 <= x <= 50:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] demand_change requires unit ER/ICU/WARD and x from 0.1 to 50")
+            elif kind == "er_arrivals_surge":
+                x = item.get("x")
+                if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) or not 0.1 <= x <= 50:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] er_arrivals_surge requires x from 0.1 to 50")
+            elif kind == "staff_change":
+                u, role = item.get("unit"), item.get("role")
+                if u not in BED_UNITS or role not in ("NURSE", "DOCTOR") or ("delta" in item) == ("absent_pct" in item):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] staff_change requires unit ER/ICU/WARD, role NURSE/DOCTOR, and exactly one of delta or absent_pct")
+                value = item.get("delta", item.get("absent_pct"))
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] staff_change value must be finite")
+                if "delta" in item and (not isinstance(value, int) or not -1000 <= value <= 1000):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] staff delta must be an integer from -1000 to 1000")
+                if "absent_pct" in item and not 0 <= value <= 100:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] absent_pct must be from 0 to 100")
+            elif kind == "bed_change":
+                d = item.get("delta")
+                if item.get("unit") not in BED_UNITS or isinstance(d, bool) or not isinstance(d, int) or not -1000 <= d <= 1000:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] bed_change requires unit ER/ICU/WARD and integer delta from -1000 to 1000")
+            elif kind == "or_closed":
+                dates = item.get("dates", [])
+                if not isinstance(dates, list) or not dates or any(not isinstance(d, str) for d in dates):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] or_closed requires a non-empty dates list")
+                try:
+                    for d in dates: datetime.fromisoformat(d)
+                except ValueError:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] dates must be ISO dates") from None
+                if item.get("or_id") is not None and (not isinstance(item["or_id"], str) or not item["or_id"]):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] or_id must be a non-empty string")
+                known_rooms = {r["or_id"] for r in self.twin.t["operating_rooms"]}
+                if item.get("or_id") is not None and item["or_id"] not in known_rooms:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] names unknown OR {item['or_id']!r}")
+            elif kind == "reschedule_surgery":
+                if not isinstance(item.get("booking_id"), str) or not item["booking_id"] or not isinstance(item.get("target"), dict):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] reschedule_surgery requires booking_id and target")
+                target = item["target"]
+                try:
+                    if target.get("domain") != "OR" or not target.get("resource_id"):
+                        raise ValueError()
+                    datetime.fromisoformat(target["start"])
+                except (KeyError, TypeError, ValueError):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] target requires domain OR, resource_id and ISO start") from None
+                if target["resource_id"] not in {r["or_id"] for r in self.twin.t["operating_rooms"]}:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] names unknown OR {target['resource_id']!r}")
+                if item["booking_id"] not in {r["surgery_id"] for r in self.twin.t["surgeries"]}:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] names unknown surgery {item['booking_id']!r}")
+            else:
+                raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] has unsupported type {kind!r}")
+            normalized.append(item)
+        db = getattr(self.twin.t, "path", None)
+        stat = db.stat() if db is not None and db.exists() else None
+        data_version = body.get("data_version") or (f"sqlite:{stat.st_size}:{stat.st_mtime_ns}" if stat else "csv-snapshot-v1")
+        return Scenario(unit, mult, body.get("as_of"), horizon, tuple(normalized),
+                        str(data_version), str(body.get("policy_version") or self.policy_fingerprint()),
+                        seed, str(body.get("created_by", "")))
 
     def policy_fingerprint(self) -> str:
         """Changes whenever any structured policy file is added, edited or removed."""
@@ -229,10 +306,28 @@ class App:
                 "pack_policies": [{"id": d.id, "source": d.source, "text": d.text} for d in self.twin.policy_docs()]}
 
     # ───────────── what-if ─────────────
-    def simulate(self, body: dict) -> dict:
+    def simulate(self, body: dict, principal: Principal | None = None) -> dict:
         """Preview a scenario: run the agents on it, apply the accepted actions to a copy of the twin and
         report capacity arithmetic before/after. Nothing is stored. No queue/wait simulation exists."""
+        if principal and not body.get("created_by"):
+            body = {**body, "created_by": principal.username}
         as_of, scenario = self.parse_as_of(body.get("as_of")), self.parse_scenario(body)
+        from dataclasses import replace
+        scenario = replace(scenario, as_of=as_of.isoformat())
+        for i, item in enumerate(scenario.interventions):
+            if item["type"] == "reschedule_surgery":
+                target_start = datetime.fromisoformat(item["target"]["start"])
+                if target_start <= as_of:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] target must be after as_of")
+                if (target_start - as_of).days > scenario.horizon:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] target must fall within the scenario horizon")
+                if self.twin.snapshot(as_of).booking(item["booking_id"]) is None:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] surgery is not a movable booking at as_of")
+            elif item["type"] == "or_closed":
+                for day in item["dates"]:
+                    closed = datetime.fromisoformat(day)
+                    if closed.date() < as_of.date() or (closed.date() - as_of.date()).days >= scenario.horizon:
+                        raise ApiError(HTTPStatus.BAD_REQUEST, f"interventions[{i}] closure date must fall within as_of and the scenario horizon")
         with self.lock:
             inputs = self._inputs(as_of, scenario)
             decision = asyncio.run(self._orchestrator(body.get("language", "en"), InMemoryAudit()).run(inputs))
@@ -282,7 +377,7 @@ class App:
         if n_post:
             unavailable.insert(0, {"metric_key": "effect", "metric": Msg("sim.m_relief").render(lang),
                                    "reason": Msg("sim.na_relief", n=n_post, relief=total_relief).render(lang)})
-        return {
+        result = {
             "as_of": as_of.isoformat(), "scenario": to_jsonable(scenario), "before": b, "after": a, "bed_change": moved,
             "capacity_cost_change_egp_per_day": cost,
             "cost_note": Msg("sim.cost_note").render(lang),
@@ -296,6 +391,172 @@ class App:
             "pack_reference": [{"id": r["simulation_id"], "name": r["scenario_name"], "results": json.loads(r["results_json"])}
                                for r in self.twin.t["simulation_runs"]],
             "decision": {"accepted": view["accepted"], "rejected": view["rejected"], "card": view["card"], "reports": view["reports"]}}
+        result["core"] = self._scenario_core(as_of, scenario, inputs.twin)
+        self._persist_simulation(scenario, result, as_of)
+        return result
+
+    def _scenario_core(self, as_of, scenario, initial_snapshot):
+        """Deterministic, isolated scenario arithmetic. Unvalidated baselines stay labeled as assumptions."""
+        from dataclasses import replace
+        from hospital_agents.forecasting import _targets, _weekday_mean
+
+        targets = _targets(self.twin)
+        def weekday_values(key):
+            values = targets.get(key, {}).get("values", {})
+            history = sorted((day, value) for day, value in values.items() if day < as_of.date())
+            return [_weekday_mean(history, as_of.date() + timedelta(days=offset))
+                    for offset in range(1, scenario.horizon + 1)]
+        snap = replace(initial_snapshot, pools=dict(initial_snapshot.pools), slots=tuple(initial_snapshot.slots),
+                       bookings=tuple(initial_snapshot.bookings))
+        notes, rejected, accepted_moves = [], [], []
+        multipliers = {u: (scenario.demand_multiplier if u == scenario.unit else 1.0)
+                       for u in BED_UNITS}
+        arrivals_multiplier = 1.0
+        staff_delta = {}
+        # Keep modifications local to this immutable snapshot.
+        pools = dict(snap.pools)
+        slots = list(snap.slots)
+        for item in scenario.interventions:
+            kind = item["type"]
+            if kind == "demand_change":
+                multipliers[item["unit"]] *= float(item["x"])
+            elif kind == "er_arrivals_surge":
+                arrivals_multiplier *= float(item["x"])
+            elif kind == "staff_change":
+                key = f'{item["unit"]}:{"nurses" if item["role"] == "NURSE" else "doctors"}'
+                pool = pools.get(key)
+                if pool is None:
+                    rejected.append({"intervention": item, "reason": f"staff pool {key} is unavailable"})
+                    continue
+                before = pool.total
+                delta = item.get("delta")
+                if delta is None:
+                    delta = -math.floor(before * float(item["absent_pct"]) / 100)
+                if before + delta < 0:
+                    rejected.append({"intervention": item, "reason": f"requested staffing reduction exceeds rostered {key} coverage ({before})"})
+                    continue
+                if item["role"] == "NURSE" and delta:
+                    proposal = Proposal(f"staff-{len(rejected)}", "scenario", "Nurse coverage change",
+                                        (PoolAdjustment(key, int(delta)),), ())
+                    policies = asyncio.run(self.retriever().values([item["unit"]], as_of))
+                    gate = Arbitrator(Settings()).resolve(snap, policies, (proposal,))
+                    if gate.rejected:
+                        rejected.append({"intervention": item, "reason": "; ".join(gate.rejected[0].reasons)})
+                        continue
+                pools[key] = replace(pool, total=before + delta)
+                staff_delta[key] = staff_delta.get(key, 0) + delta
+            elif kind == "bed_change":
+                key, delta = f'{item["unit"]}:beds', int(item["delta"])
+                pool = pools.get(key)
+                if pool is None or pool.total + delta < pool.committed:
+                    rejected.append({"intervention": item, "reason": "bed change would fall below occupied beds or the bed pool is unavailable"})
+                elif delta > 0:
+                    notes.append({"intervention": item, "status": "assumed", "warning": "physical ceiling, staffed-bed authorization and equipment capacity are not verifiable from this data"})
+                else:
+                    pools[key] = replace(pool, total=pool.total + delta)
+            elif kind == "or_closed":
+                dates, room = set(item["dates"]), item.get("or_id")
+                slots = [s for s in slots if not (s.key.domain == "OR" and s.key.start.date().isoformat() in dates and (room is None or s.key.resource_id == room))]
+            elif kind == "reschedule_surgery":
+                bid, target = item["booking_id"], item["target"]
+                booking = snap.booking(bid)
+                target_key = SlotKey("OR", target["resource_id"], datetime.fromisoformat(target["start"]))
+                if booking is None:
+                    rejected.append({"intervention": item, "reason": "booking_id is unknown at this as_of"})
+                    continue
+                proposal = Proposal(f"scenario-{len(accepted_moves)}", "scenario", "Requested surgery move",
+                                    (Reschedule(bid, booking.slot, target_key),), ())
+                test_snapshot = replace(snap, pools=pools, slots=tuple(slots))
+                resolution = Arbitrator(Settings()).resolve(test_snapshot, PolicyBundle(), (proposal,))
+                if resolution.rejected:
+                    rejected.append({"intervention": item, "reason": "; ".join(resolution.rejected[0].reasons)})
+                else:
+                    accepted_moves.append((proposal, item))
+                    # Subsequent proposals see this booking and occupancy change.
+                    snap = apply_actions(test_snapshot, proposal.actions)
+                    slots = list(snap.slots)
+        snap = replace(snap, pools=pools, slots=tuple(slots))
+        assumption = "assumption: unvalidated baseline forecast"
+        demand = {}
+        for unit in BED_UNITS:
+            points = [value for value in weekday_values(f"{unit}:occupancy") if value is not None]
+            pool = snap.pools.get(f"{unit}:beds")
+            if not points or pool is None:
+                demand[unit] = {"status": "abstain", "reason": "no weekday-mean baseline available"}
+                continue
+            scale = self.twin.beds_total.get(unit, 0) * multipliers[unit]
+            peak = max(float(value) * scale for value in points)
+            shortfall = max(0, math.ceil(peak - 1e-9) - pool.total)
+            row = {"status": "assumption", "label": assumption, "baseline": round(peak / multipliers[unit], 2),
+                   "demand": round(peak, 2), "beds": pool.total, "shortfall": shortfall,
+                   "delta_shortfall": None}
+            demand[unit] = row
+        for unit in BED_UNITS:
+            row = demand.get(unit)
+            nurse = [value for value in weekday_values(f"{unit}:nurses") if value is not None]
+            if row and row.get("status") == "assumption" and nurse:
+                required = max(float(value) for value in nurse)
+                current = snap.pools.get(f"{unit}:nurses")
+                row["nurse_demand"] = {"status": "assumption", "label": assumption, "required": round(required, 2),
+                                       "available": current.total if current else None,
+                                       "shortfall": max(0, math.ceil(required - 1e-9) - current.total) if current else None}
+            if row and row.get("status") == "assumption":
+                row["delta_shortfall"] = row["shortfall"] - max(0, math.ceil(row["baseline"] - 1e-9) - initial_snapshot.pools[f"{unit}:beds"].total)
+                donor_headroom = 0
+                for donor in BED_UNITS:
+                    if donor == unit or demand.get(donor, {}).get("status") != "assumption":
+                        continue
+                    donor_pool = snap.pools.get(f"{donor}:beds")
+                    if donor_pool:
+                        donor_headroom += max(0, donor_pool.total - math.ceil(demand[donor]["demand"] - 1e-9))
+                row["donor_headroom_beds"] = donor_headroom
+                row["why_nothing_moved"] = ("no shortfall under this baseline assumption" if not row["shortfall"] else
+                                             "no sourced transfer policy or verified staffed-bed/equipment ceiling")
+                row["what_would_help"] = ([f"verify transfer policy; up to {donor_headroom} donor beds appear unused in the baseline"]
+                                           if row["shortfall"] and donor_headroom else
+                                           ["verify staffed-bed and equipment ceiling from operational sources"]
+                                           if row["shortfall"] else ["no capacity action indicated by this assumption"])
+        arrivals = [value for value in weekday_values("er_arrivals") if value is not None]
+        doctor_demand = {u: {"status": "abstain", "reason": "no doctor-demand baseline in the data pack"} for u in BED_UNITS}
+        resources = {u: {"status": "abstain", "reason": "no resource-demand baseline in the data pack"} for u in BED_UNITS}
+        return {"before_after_delta": {u: {"label": demand[u].get("label"),
+                                                  "baseline_shortfall": (max(0, math.ceil(demand[u]["baseline"] - 1e-9) - initial_snapshot.pools[f"{u}:beds"].total) if demand[u].get("status") == "assumption" else None),
+                                                  "scenario_shortfall": demand[u].get("shortfall"), "delta": demand[u].get("delta_shortfall")}
+                                         for u in BED_UNITS},
+                "bed_demand": demand, "staff_delta": staff_delta,
+                "er_arrivals": {"status": "assumption", "label": assumption, "baseline_mean": round(sum(arrivals) / len(arrivals), 2) if arrivals else None,
+                                "scenario_mean": round(sum(arrivals) / len(arrivals) * arrivals_multiplier, 2) if arrivals else None},
+                "doctor_demand": doctor_demand, "resource_demand": resources,
+                "reschedules_accepted": [x[1] for x in accepted_moves], "rejected": rejected, "notes": notes,
+                "wait_revenue_overtime": {k: {"status": "unavailable", "reason": "no calibrated simulation inputs"} for k in ("wait", "revenue", "overtime")},
+                "seed": scenario.seed}
+
+    def _persist_simulation(self, scenario, result, as_of):
+        db_path = getattr(self.twin.t, "path", None)
+        if db_path is None:
+            return
+        sid, now = str(uuid.uuid4()), datetime.now(timezone.utc).isoformat()
+        params = to_jsonable(scenario)
+        params["as_of"] = as_of.isoformat()
+        result["simulation_id"] = sid
+        with closing(sqlite3.connect(db_path)) as conn:
+            conn.execute("INSERT INTO simulation_runs (simulation_id,created_at,scenario_name,scenario_type,baseline_or_scenario,random_seed,start_time,end_time,status,parameters_json,results_json,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                         (sid, now, "what-if", "deterministic", "scenario", scenario.seed, as_of.isoformat(), as_of.isoformat(), "completed", json.dumps(params), json.dumps(result), "replayable scenario contract"))
+            for i, (kind, details) in enumerate((("scenario", params), ("result", result.get("core", {})))):
+                conn.execute("INSERT INTO simulation_events (simulation_event_id,simulation_id,event_time,entity_type,entity_id,event_type,details_json) VALUES (?,?,?,?,?,?,?)",
+                             (f"{sid}-{i}", sid, now, "scenario", sid, kind, json.dumps(details)))
+            conn.commit()
+
+    def replay_simulation(self, simulation_id: str) -> dict:
+        db_path = getattr(self.twin.t, "path", None)
+        if db_path is None:
+            raise ApiError(HTTPStatus.NOT_FOUND, "stored simulations are unavailable for CSV fallback data")
+        with closing(sqlite3.connect(db_path)) as conn:
+            row = conn.execute("SELECT parameters_json FROM simulation_runs WHERE simulation_id=?", (simulation_id,)).fetchone()
+        if row is None:
+            raise ApiError(HTTPStatus.NOT_FOUND, "unknown simulation")
+        params = json.loads(row[0])
+        return self.simulate(params)
 
     # ───────────── decisions ─────────────
     def run(self, body: dict, principal: Principal | None = None) -> dict:
@@ -560,7 +821,7 @@ class Handler(BaseHTTPRequestHandler):
                 ("POST", "assistant"): lambda: a.assistant_ask(body, principal), ("POST", "llm-test"): lambda: a.llm_test(principal),
                 ("GET", "decisions"): lambda: a.decisions(q.get("lang", [None])[0]), ("GET", "sandbox"): a.sandbox, ("GET", "audit"): a.audit_tail,
                 ("GET", "policies"): a.policies,
-                ("POST", "simulate"): lambda: a.simulate(body) if a._need(principal, "run") else None,
+                ("POST", "simulate"): lambda: a.simulate(body, a._need(principal, "run")),
                 ("POST", "run"): lambda: a.run(body, a._need(principal, "run")),
                 ("POST", "policies"): lambda: a.set_policy(body, principal),
                 ("POST", "rollback"): lambda: a.rollback(body, principal),
@@ -572,6 +833,9 @@ class Handler(BaseHTTPRequestHandler):
                 result = a.assistant_reset(principal)
             elif parts[:2] == ["api", "decisions"] and len(parts) == 3 and method == "GET":
                 result = a.view(parts[2], q.get("lang", [None])[0])
+            elif parts[:2] == ["api", "simulations"] and len(parts) == 4 and parts[3] == "replay" and method == "POST":
+                a._need(principal, "run")
+                result = a.replay_simulation(parts[2])
             elif method == "POST" and len(parts) == 4 and parts[:2] == ["api", "decisions"] and parts[3] in ("approve", "reject"):
                 result = getattr(a, parts[3])(parts[2], body, principal)
             else:

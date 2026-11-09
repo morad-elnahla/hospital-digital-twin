@@ -386,6 +386,10 @@ function simResult(r) {
   const pct = x => NUM(x == null ? "—" : num(x) + "%"), whole = x => NUM(x == null ? "—" : num(x, 0));
   return h("div", { class: "grid", style: "gap:16px" },
     h("div", { class: "callout" }, icon("info"), t("sim_scenario", { u: unitName(r.scenario.unit), m: r.scenario.demand_multiplier, when: when(r.as_of) })),
+    panel({ title: t("scenario_core"), prov: "simulation", sub: t("assumption_label") },
+      table([{ label: t("department") }, { label: t("peak_demand"), n: 1 }, { label: t("beds_total"), n: 1 }, { label: t("shortfall"), n: 1 }, { label: t("nurse_need"), n: 1 }, { label: t("nurse_available"), n: 1 }],
+        U.map(u => { const d = r.core?.bed_demand?.[u] || {}, n = d.nurse_demand || {}; return [unitName(u), whole(d.demand), whole(d.beds), whole(d.shortfall), whole(n.required), whole(n.available)]; })),
+      h("div", { class: "small faint" }, U.flatMap(u => (r.core?.bed_demand?.[u]?.what_would_help || []).map(x => h("div", {}, unitName(u), ": ", x))))),
     h("div", { class: "grid g2" },
       panel({ title: t("baseline"), prov: "observed", sub: t("baseline_sub"), source: ["beds", "bed_stays", "daily_metrics"] }, table([{ label: t("department") }, { label: t("beds_total"), n: 1 }, { label: t("peak_demand_beds"), n: 1 }, { label: t("peak_util"), n: 1 }, { label: t("shortfall"), n: 1 }], U.map(u => [unitName(u), whole(b[u].beds), NUM(num(b[u].peak_demand_beds)), pct(b[u].peak_utilisation_pct), whole(b[u].shortfall_beds)]))),
       panel({ title: t("proposed_actions"), prov: "agent", sub: t("proposed_actions_sub") }, acts.length ? h("ul", { class: "plain small" }, acts.map(x => h("li", {}, actionText(x)))) : empty(t("no_actions"), "check"))),
