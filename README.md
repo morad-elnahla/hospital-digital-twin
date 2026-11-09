@@ -1,57 +1,138 @@
 <div align="center">
-  <h1>🏥 Hospital Digital Twin</h1>
-  <p><strong>ZAWolf · Hospital operations, made explorable</strong></p>
-  <p><strong>Observe → Analyze → Simulate → Decide</strong><br>
-  Explore operational data and review transparent what-if scenarios in English or Arabic.</p>
-  <p><img src="https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white" alt="Python 3.13"> <img src="https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI"> <img src="https://img.shields.io/badge/UI-React%20%2B%20TypeScript-3178C6?logo=typescript&logoColor=white" alt="React and TypeScript"> <img src="https://img.shields.io/badge/Database-SQLite-003B57?logo=sqlite&logoColor=white" alt="SQLite"> <img src="https://img.shields.io/badge/Data-synthetic-orange" alt="Synthetic data"></p>
-  <table>
-    <tr>
-      <td><strong>42</strong><br>CSV-backed tables</td>
-      <td><strong>678,013</strong><br>synthetic database rows</td>
-      <td><strong>4</strong><br>server-enforced roles</td>
-      <td><strong>EN · العربية</strong><br>English + Arabic UI</td>
-    </tr>
-  </table>
-  <p><a href="#-quick-start">🚀 Quick start</a> &nbsp;·&nbsp; <a href="#-what-it-does">✨ Features</a> &nbsp;·&nbsp; <a href="#-roles--permissions">👥 Roles</a> &nbsp;·&nbsp; <a href="#-project-guide">📚 Project guide</a></p>
-  <sub><strong>Synthetic-data engineering prototype · Not a live hospital system or clinically validated decision aid</strong></sub>
+
+# 🏥 Hospital Digital Twin
+
+### ZAWolf · Hospital operations, made explorable
+
+**Observe → Analyze → Simulate → Decide**
+
+Explore operational hospital data, run transparent what-if scenarios, and route every decision through an auditable, role-enforced workflow — in **English** or **العربية**.
+
+<p>
+  <img src="https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white" alt="Python 3.13">
+  <img src="https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/UI-React%20%2B%20TypeScript-3178C6?logo=typescript&logoColor=white" alt="React + TypeScript">
+  <img src="https://img.shields.io/badge/Database-SQLite-003B57?logo=sqlite&logoColor=white" alt="SQLite">
+  <img src="https://img.shields.io/badge/Tests-Vitest%20%2B%20pytest-6E9F18?logo=vitest&logoColor=white" alt="Tests">
+  <img src="https://img.shields.io/badge/i18n-EN%20%7C%20AR%20(RTL)-2EA44F" alt="Bilingual">
+  <img src="https://img.shields.io/badge/Data-synthetic-orange" alt="Synthetic data">
+</p>
+
+<table>
+  <tr>
+    <td align="center"><h3>42</h3>CSV-backed tables</td>
+    <td align="center"><h3>678,013</h3>synthetic rows</td>
+    <td align="center"><h3>4</h3>server-enforced roles</td>
+    <td align="center"><h3>40</h3>passing UI tests</td>
+    <td align="center"><h3>EN · ع</h3>bilingual + RTL</td>
+  </tr>
+</table>
+
+[🚀 Quick start](#-quick-start) · [✨ Features](#-features) · [🧭 Architecture](#-architecture) · [👥 Roles](#-roles--permissions) · [🧪 Testing](#-testing) · [📚 Project guide](#-project-guide) · [⚠️ Limits](#️-verification--limits)
+
+> [!WARNING]
+> **Synthetic-data engineering prototype.** This is not a live hospital system and not a clinically validated decision aid. Never use its outputs for patient care or real operational decisions.
+
 </div>
 
 ---
 
-## ✨ What it does
+## 📑 Table of contents
 
-- **Operational views:** overview, beds and capacity, staff, operating rooms, forecasts, alerts, decisions, and audit history.
-- **Agent recommendations:** show evidence and abstain when a demand baseline or validated model is missing.
-- **Scenario Lab:** preview bounded interventions against an `as_of` snapshot, compare before/after values, inspect assumptions and warnings, and save drafts for review.
-- **Safe decision workflow:** separate `NO_ACTION` from `ESCALATE`; escalations show the residual and require a manager acknowledgement note. They cannot be approved or applied.
-- **Sandbox:** eligible approved actions can be applied and rolled back with the decision lifecycle recorded for review.
-- **Bilingual interface:** English and Arabic layouts, including RTL behavior, sourced from the maintained UI in `lovable_src/`.
+- [✨ Features](#-features)
+- [🛡️ Safety by design](#️-safety-by-design)
+- [🧭 Architecture](#-architecture)
+- [🔄 Decision lifecycle](#-decision-lifecycle)
+- [👥 Roles & permissions](#-roles--permissions)
+- [🚀 Quick start](#-quick-start)
+- [⚙️ Configuration](#️-configuration)
+- [🧪 Testing](#-testing)
+- [📚 Project guide](#-project-guide)
+- [⚠️ Verification & limits](#️-verification--limits)
+- [📖 Further documentation](#-further-documentation)
+- [🇸🇦 ملخص بالعربية](#-ملخص-بالعربية)
 
-### Scenario and forecast limits
+---
 
-ICU/WARD bed and nurse agents **abstain** because their candidate models did not beat the weekday-mean baseline. Scenario estimates may use that baseline only with the label **“assumption: unvalidated baseline forecast.”** Doctor and resource demand agents abstain because matching demand baselines are not present. ER arrivals/wait and OR utilization passed their recorded backtest; this does not validate clinical use.
+## ✨ Features
 
-The source pack has roster headcounts but no case-level OR team/provider assignments. OR moves that require an unverifiable team therefore fail closed. Added beds remain assumptions unless staffing and equipment can be verified. See [data reconciliation](docs/RECONCILIATION.md), [data changes](docs/DATA_CHANGES.md), and the [forecast/RAG notes](docs/RAG_EVAL.md).
+| Area | What you get |
+|---|---|
+| 📊 **Operational views** | Overview, beds & capacity, staff, operating rooms, forecasts, alerts, decisions, and full audit history. |
+| 🤖 **Agent recommendations** | Every recommendation shows its evidence — and agents **abstain** when a demand baseline or validated model is missing. |
+| 🧪 **Scenario Lab** | Preview bounded interventions against an `as_of` snapshot, compare before/after values, inspect assumptions & warnings, save drafts for review. |
+| ✅ **Safe decision workflow** | `NO_ACTION` is kept separate from `ESCALATE`. Escalations show the residual and require a manager acknowledgement note — they can never be approved or applied. |
+| 🧰 **Sandbox** | Eligible approved actions can be applied and rolled back, with the full lifecycle recorded. |
+| 🌍 **Bilingual UI** | English and Arabic layouts with proper RTL behavior, from the maintained source in `lovable_src/`. |
+| 🔐 **Server-enforced RBAC** | Permissions checked on the server and tested with real requests against every OpenAPI route. |
+| 📜 **Audit trail** | Every decision, escalation, apply, and rollback is logged for review. |
 
-## 🧭 How the project fits together
+---
+
+## 🛡️ Safety by design
+
+The system prefers **saying "I don't know"** over a confident wrong answer.
+
+| Agent / model | Status | Behavior |
+|---|:---:|---|
+| ER arrivals / wait | ✅ Passed backtest | Forecasts shown (not clinically validated) |
+| OR utilization | ✅ Passed backtest | Forecasts shown (not clinically validated) |
+| ICU / WARD beds & nurses | ⛔ Abstains | Models did not beat the weekday-mean baseline |
+| Doctor & resource demand | ⛔ Abstains | No matching demand baseline available |
+
+- Scenario estimates may use the weekday-mean baseline **only** when labelled **“assumption: unvalidated baseline forecast.”**
+- The source pack has roster headcounts but **no case-level OR team/provider assignments** — OR moves that need an unverifiable team **fail closed**.
+- Added beds remain **assumptions** unless staffing and equipment can be verified.
+
+📎 Details: [Data reconciliation](docs/RECONCILIATION.md) · [Data changes](docs/DATA_CHANGES.md) · [Forecast / RAG notes](docs/RAG_EVAL.md)
+
+---
+
+## 🧭 Architecture
 
 ```mermaid
 flowchart LR
-    CSV[CSV source pack] --> BUILD[Schema + database build]
-    BUILD --> DB[(SQLite · 42 tables)]
-    DB --> API[FastAPI service]
-    API --> UI[React dashboard]
-    UI --> SC[Scenario preview]
-    SC --> DEC[Decision / escalation]
-    DEC --> AUDIT[Audit log]
-    DEC --> SB[Sandbox apply / rollback]
+    CSV[📁 CSV source pack] --> BUILD[🛠️ Schema + DB build]
+    BUILD --> DB[(🗄️ SQLite · 42 tables)]
+    DB --> API[⚡ FastAPI service]
+    API --> UI[🖥️ React dashboard]
+    UI --> SC[🧪 Scenario preview]
+    SC --> DEC{⚖️ Decision / escalation}
+    DEC --> AUDIT[📜 Audit log]
+    DEC --> SB[🧰 Sandbox apply / rollback]
 ```
 
-The React source lives in `lovable_src/hdt-ui`; the packaging script builds the static app in `ui/`, which FastAPI serves at `/`. The backend domain and agent implementation is in `hospital_agents/`; schema and data build tools are in `db/`.
+| Layer | Location | Notes |
+|---|---|---|
+| Frontend source | `lovable_src/hdt-ui` | React + TypeScript, Vitest |
+| Packaged UI | `ui/` | Static build served by FastAPI at `/` |
+| API | `app.py` | FastAPI routes, OpenAPI at `/docs` |
+| Domain & agents | `hospital_agents/` | Agent and service logic |
+| Data tooling | `db/` | Schema generation, build, evaluation, validation |
+
+---
+
+## 🔄 Decision lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Draft: Save scenario
+    Draft --> Approved: Manager approves
+    Draft --> Rejected: Manager rejects
+    Draft --> Escalated: ESCALATE
+    Escalated --> Acknowledged: Manager note (required)
+    Approved --> Applied: Sandbox apply
+    Applied --> RolledBack: Rollback
+    Rejected --> [*]
+    Acknowledged --> [*]
+    RolledBack --> [*]
+```
+
+> Escalations can be **acknowledged only** — never approved or applied.
+
+---
 
 ## 👥 Roles & permissions
-
-Permissions are enforced by the server and covered by real requests against routes discovered from the OpenAPI schema. The full route-by-role status table is in [`docs/ROLE_MATRIX.md`](docs/ROLE_MATRIX.md).
 
 | Role | Read | Preview scenarios | Run agents | Save drafts | Approve / reject / rollback | Edit policies |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -60,13 +141,18 @@ Permissions are enforced by the server and covered by real requests against rout
 | `analyst` | ✅ | ✅ | ✅ | ✅ | — | — |
 | `operations_manager` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-Local accounts are bootstrapped on first run. Set local credentials in an ignored `.env` file using the `HDT_*_PASSWORD` variables; the clinician credential can be generated automatically or set explicitly. Never commit `.env`.
+Full route-by-role matrix: [`docs/ROLE_MATRIX.md`](docs/ROLE_MATRIX.md)
+
+---
 
 ## 🚀 Quick start
 
-### Windows · PowerShell
+### Prerequisites
 
-From the repository root, install the pinned Python dependencies, build the database and reports, then start the app:
+- **Python 3.13** (recorded runtime: Windows)
+- **Node.js 24.21.0** (only to rebuild the dashboard)
+
+### 1 · Backend & database (PowerShell)
 
 ```powershell
 py -3.13 -m pip install -r requirements.txt
@@ -78,9 +164,15 @@ py -3.13 -m db.validate_data
 py -3.13 app.py
 ```
 
-Open **http://127.0.0.1:8000**. First-run credentials are printed once to the server terminal. Interactive API docs are available at **http://127.0.0.1:8000/docs**.
+| URL | What |
+|---|---|
+| http://127.0.0.1:8000 | Dashboard |
+| http://127.0.0.1:8000/docs | Interactive API docs |
 
-To rebuild the dashboard from its source, open a second PowerShell window:
+> [!NOTE]
+> First-run credentials are printed **once** to the server terminal.
+
+### 2 · Rebuild the dashboard (optional)
 
 ```powershell
 cd lovable_src\hdt-ui
@@ -90,43 +182,131 @@ npm run build
 node scripts/package_app_py.mjs ..\..\ui
 ```
 
-Restart the Python server to serve the rebuilt `ui/` assets. Node 24.21.0 completed this package build in the recorded environment; the current build output and per-file backend test results are summarized in [`docs/STATUS.md`](docs/STATUS.md).
+Restart the Python server to serve the rebuilt `ui/` assets.
 
-### Run checks
+<details>
+<summary>🐧 macOS / Linux equivalent</summary>
+
+```bash
+python3.13 -m pip install -r requirements.txt
+cp .env.example .env
+python3.13 -m db.generate_schema
+python3.13 -m db.build_db
+python3.13 -m db.evaluate_forecasts
+python3.13 -m db.validate_data
+python3.13 app.py
+```
+
+> Not verified in the recorded environment.
+</details>
+
+---
+
+## ⚙️ Configuration
+
+Local accounts are bootstrapped on first run. Configure them in an ignored `.env` file:
+
+| Variable | Purpose |
+|---|---|
+| `HDT_*_PASSWORD` | Password per local role account |
+| Clinician credential | Auto-generated, or set explicitly |
+
+> [!CAUTION]
+> Never commit `.env`.
+
+---
+
+## 🧪 Testing
 
 ```powershell
-# From the repository root: each tests/*.py file runs in its own process
+# Backend — each tests/*.py runs in its own process (repo root)
 py -3.13 scripts/run_tests.py
 
-# From lovable_src\hdt-ui
+# Frontend — from lovable_src\hdt-ui
 npm test
 ```
 
+| Suite | Result |
+|---|---|
+| Backend (per-file) | ✅ Passed — `test_browser.py` skipped (no Playwright/Chromium), one legacy harness case skipped |
+| Frontend (Vitest) | ✅ **40 tests** across 6 files |
+| API contract keys | ✅ `tests/test_contract_keys.py` + `tests/contract_keys.json` |
+| Role enforcement | ✅ Real requests against OpenAPI-discovered routes |
+
+---
+
 ## 📚 Project guide
 
-| Path | Contents |
+```text
+.
+├── app.py                 # FastAPI entry point & HTTP routes
+├── hospital_agents/       # Agent & application service logic
+├── db/                    # Schema, build, evaluation & validation tools
+├── data/                  # Synthetic source dataset
+├── data_contracts/        # Table contracts
+├── runtime/               # Local DB & session state (git-ignored)
+├── lovable_src/hdt-ui/    # Editable frontend source & UI tests
+├── ui/                    # Packaged frontend served by the app
+├── tests/                 # Backend, API contract, role, safety & scenario tests
+├── scripts/               # Test runner & helpers
+└── docs/                  # Status, caveats, reconciliation, role matrix, evaluations
+```
+
+---
+
+## ⚠️ Verification & limits
+
+**✅ Verified:** per-file backend tests · 40 UI tests · API contract keys · role enforcement · Python 3.13 on Windows
+
+**❓ Not verified:**
+- Browser rendering
+- Docker build / run
+- GitHub Actions CI after the latest fixes
+- Python 3.12 behavior
+- Clinical validity
+
+> [!IMPORTANT]
+> All dataset values are **synthetic**. Reports, forecasts, and scenario outputs do not represent real hospital outcomes.
+
+Phase history, per-file timings, remaining gaps, and resource/latency figures: [`docs/STATUS.md`](docs/STATUS.md)
+
+---
+
+## 📖 Further documentation
+
+| Document | Contents |
 |---|---|
-| `app.py` | FastAPI entry point and HTTP routes |
-| `hospital_agents/` | Agent and application service logic |
-| `db/` | Generated schema, data build, evaluation, and validation tools |
-| `data/` · `data_contracts/` | Source dataset and table contracts |
-| `runtime/` | Local generated database and persisted session state (ignored by Git) |
-| `lovable_src/hdt-ui/` | Editable frontend source and UI tests |
-| `ui/` | Packaged frontend served by the application |
-| `tests/` | Backend, API contract, role, safety, and scenario tests |
-| `docs/` | Status, data caveats, reconciliation, role matrix, and evaluation notes |
+| [`docs/STATUS.md`](docs/STATUS.md) | Build output, test results, timings, gaps |
+| [`docs/ROLE_MATRIX.md`](docs/ROLE_MATRIX.md) | Route-by-role permission table |
+| [`docs/RECONCILIATION.md`](docs/RECONCILIATION.md) | Data reconciliation |
+| [`docs/DATA_CHANGES.md`](docs/DATA_CHANGES.md) | Data changes log |
+| [`docs/RAG_EVAL.md`](docs/RAG_EVAL.md) | Forecast & RAG evaluation notes |
 
-## 🔎 Verification and limits
+---
 
-- The latest recorded per-file backend run passed. `test_browser.py` skips because Playwright/Chromium is unavailable; a legacy frontend harness case also skips.
-- The Lovable UI suite recorded **40 passing tests** across six Vitest files. API response-key checks are covered by `tests/test_contract_keys.py` and `tests/contract_keys.json`.
-- **Not verified:** browser rendering, Docker build/run, GitHub Actions CI after the latest fixes, Python 3.12 behavior, and clinical validity. The recorded runtime is Python 3.13 on Windows.
-- Dataset values are synthetic. Reports, forecasts, and scenario outputs do not represent real hospital outcomes and must not be used for patient care or operational decisions.
+## 🇸🇦 ملخص بالعربية
 
-For the detailed phase history, per-file timings, remaining gaps, and measured resource/latency figures, see [`docs/STATUS.md`](docs/STATUS.md).
+<div dir="rtl">
+
+**التوأم الرقمي للمستشفى** نموذج أولي لاستكشاف بيانات تشغيل المستشفى ومحاكاة سيناريوهات "ماذا لو" بشفافية، مع سير قرارات آمن وقابل للتدقيق.
+
+- 📊 لوحات للأسرّة، الطاقم، غرف العمليات، التنبؤات، التنبيهات والقرارات.
+- 🤖 وكلاء يعرضون الأدلة ويمتنعون عن التوصية عند غياب نموذج موثوق.
+- 🧪 مختبر سيناريوهات بمقارنة قبل/بعد وحفظ مسودات.
+- 🔐 أربعة أدوار تُفرض صلاحياتها من الخادم.
+- 🌍 واجهة بالعربية والإنجليزية مع دعم كامل لاتجاه RTL.
+
+> ⚠️ البيانات اصطناعية بالكامل، ولا يجوز استخدام النتائج في رعاية المرضى أو قرارات تشغيلية حقيقية.
+
+</div>
 
 ---
 
 <div align="center">
-Built as an auditable hospital operations prototype · English + العربية · Synthetic data only
+
+**Built as an auditable hospital operations prototype**
+English + العربية · Synthetic data only
+
+<sub>Made with ❤️ by ZAWolf</sub>
+
 </div>
