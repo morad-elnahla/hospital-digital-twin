@@ -171,10 +171,10 @@ CATALOG: dict[str, tuple[str, str]] = {
                    "and would be {unmet_assumed} only if that assumption holds",
                    "{pool}: يُفترض أن التأجيلات المقبولة تخفف {relief:g} سرير من الطلب؛ العجز المؤكد يبقى {unmet}، "
                    "ويصبح {unmet_assumed} فقط إذا صح هذا الافتراض"),
-    "warn.baseline_ratio": ("{unit}: {beds} {beds:bed/beds} / {nurses} {nurses:nurse/nurses} on shift compared with an unapproved ratio "
-                            "({limit:g}:1; template ratios are 2:1 ICU / 3:1 ward and neither is approved)",
-                            "{unit}: {beds} سرير / {nurses} ممرض في الوردية مقارنةً بنسبة غير معتمدة "
-                            "({limit:g}:1؛ النسب النموذجية 2:1 للعناية المركزة و3:1 للداخلي، ولا واحدة منهما معتمدة)"),
+    "warn.baseline_ratio": ("{unit}: {beds} {beds:bed/beds} / {nurses} {nurses:nurse/nurses} = {observed_ratio} {observed_ratio:patient/patients} per nurse, above the unapproved {limit:g}:1 template ratio "
+                            "(2:1 ICU / 3:1 ward; neither template is approved)",
+                            "{unit}: {beds} سرير / {nurses} ممرض = {observed_ratio} مريض لكل ممرض، أعلى من النسبة النموذجية غير المعتمدة {limit:g}:1 "
+                            "(2:1 للعناية المركزة / 3:1 للقسم الداخلي؛ ولا واحدة منهما معتمدة)"),
     "none.reason.no_proposals": ("No agent proposed an action: there is no forecast shortfall to cover.",
                                  "لم يقترح أي وكيل إجراءً: لا يوجد عجز متوقع يحتاج إلى تغطية."),
     "none.reason.all_rejected": ("{n} {n:proposal/proposals} {n:was/were} rejected by the hard constraints; nothing remains to apply.",
@@ -241,6 +241,8 @@ def _fmt(code: str, idx: int, params: dict, lang: str = "en") -> str:
     if idx:                                   # Arabic display names for well-known identifiers
         if "agent" in p:
             p["agent"] = AGENT_AR.get(p["agent"], p["agent"])
+        if "unit" in p:
+            p["unit"] = {"ICU": "العناية المركزة", "WARD": "القسم الداخلي", "ER": "الطوارئ"}.get(p["unit"], p["unit"])
     try:
         return format_text(template[idx], **p)
     except (KeyError, IndexError, ValueError):

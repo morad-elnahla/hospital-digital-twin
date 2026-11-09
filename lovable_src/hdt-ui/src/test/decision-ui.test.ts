@@ -90,7 +90,7 @@ describe("runCreatedMessage", () => {
     expect(runCreatedMessage({ status: "NO_ACTION", note: "لا يوجد إجراء" }, "ar")).toBe("لا يوجد إجراء");
   });
   it("uses the explicit escalation label for residual shortfall", () => {
-    expect(runCreatedMessage({ status: "ESCALATE" }, "en")).toBe("Escalation required");
+    expect(runCreatedMessage({ status: "ESCALATE" }, "en")).toBe("ESCALATE — residual shortfall; manager escalation required");
   });
 });
 

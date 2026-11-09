@@ -1,6 +1,13 @@
 .env
+.env.*
+!.env.example
 runtime/
 policies/
 __pycache__/
+.pytest_cache/
 *.pyc
 test_results.txt
+*.sqlite
+*.sqlite3
+*.db
+**/node_modules/

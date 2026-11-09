@@ -11,6 +11,7 @@ import { formatScenarioAction, scenarioMessage } from "@/lib/scenario-ui";
 import { cn } from "@/lib/utils";
 import { ErrorBox, PageHead, Panel, Pill } from "@/components/hdt/kit";
 import { DecisionView } from "@/components/hdt/decision-view";
+import { DemandMultiplierControl } from "@/components/hdt/demand-multiplier-control";
 
 export const Route = createFileRoute("/agents")({
   head: () => ({
@@ -29,10 +30,10 @@ const AGENTS = ["er", "bed", "staff", "resource", "finance", "or", "appointment"
 function Agents() {
   const { t, asOf, lang, can, mode } = useApp();
   const nav = useNavigate();
-  const [unit, setUnit] = useState<"ICU" | "WARD">("ICU");
+  const [unit, setUnit] = useState<"ICU" | "WARD" | "CLINIC">("ICU");
   const [mult, setMult] = useState(12);
   const run = useMutation({
-    mutationFn: () => api<any>("/api/run", { as_of: asOf, unit, multiplier: mult, language: lang }),
+    mutationFn: () => api<any>("/api/run", { as_of: asOf, unit, multiplier: unit === "CLINIC" ? 1 : mult, language: lang }),
     onSuccess: (d) => toast.success(runCreatedMessage(d, lang)),
     onError: (e: any) => toast.error(e.message),
   });
@@ -62,19 +63,14 @@ function Agents() {
       <Panel prov="agent" title={t("stress_unit")}>
         <div className="flex flex-wrap items-end gap-5">
           <div className="flex rounded-xl bg-muted p-1">
-            {(["ICU", "WARD"] as const).map((u) => (
+            {(["ICU", "WARD", "CLINIC"] as const).map((u) => (
               <button key={u} onClick={() => setUnit(u)} className={cn("relative rounded-lg px-4 py-1.5 text-sm font-semibold", unit === u ? "text-primary-foreground" : "text-muted-foreground")}>
                 {unit === u && <motion.span layoutId="agents-unit-pill" className="bg-brand absolute inset-0 rounded-lg" />}
                 <span className="relative">{t("unit_" + u)}</span>
               </button>
             ))}
           </div>
-          <label className="min-w-56 flex-1">
-            <div className="mb-1 flex justify-between text-xs font-semibold text-muted-foreground">
-              {t("multiplier")} <span className="num text-base text-foreground">×{mult}</span>
-            </div>
-            <input type="range" dir="ltr" min={1} max={20} step={0.5} value={mult} onChange={(e) => setMult(+e.target.value)} className="w-full accent-[var(--primary)]" />
-          </label>
+          {unit !== "CLINIC" && <DemandMultiplierControl value={mult} onChange={setMult} label={t("multiplier")} lang={lang} t={t} />}
           <button
             disabled={run.isPending || !can("run")}
             title={!can("run") ? t("no_permission") : undefined}
@@ -84,7 +80,7 @@ function Agents() {
             <Play className="size-4" /> {run.isPending ? t("loading") : t("run_agents")}
           </button>
         </div>
-        <p className="mt-3 text-xs text-muted-foreground">{t("stress_note")}</p>
+        <p className="mt-3 text-xs text-muted-foreground">{t(unit === "CLINIC" ? "clinic_scheduling_note" : "stress_note")}</p>
       </Panel>
 
       {run.error && <ErrorBox error={run.error} />}
@@ -104,7 +100,6 @@ function Agents() {
             <div className="space-y-2 text-sm">{Object.entries(d.scenario_core.bed_demand ?? {}).map(([key, row]: any) => {
               const unit = t(`unit_${key}`);
               return <div key={key} dir="auto" className="space-y-1">
-                {row.residual_message && <p className="font-semibold text-bad">{t("scenario_unit_reason_line", { unit, reason: scenarioMessage(row.residual_message, t) })}</p>}
                 {row.why_nothing_moved && <p>{t("scenario_unit_why_line", { unit, label: t("why_nothing_moved"), reason: scenarioMessage(row.why_nothing_moved, t) })}</p>}
                 {(row.what_would_help ?? []).map((item: any, i: number) => <p key={i}>{t("scenario_unit_help_line", { unit, label: t("what_would_help"), reason: scenarioMessage(item, t) })}</p>)}
                 {row.status === "abstain" && <p>{t("scenario_unit_reason_line", { unit, reason: scenarioMessage({ code: row.reason_code, params: row.reason_params }, t) })}</p>}

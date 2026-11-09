@@ -124,7 +124,7 @@ class Api(unittest.TestCase):
         self.assertIn("Unresolved shortfall 101 beds", d["note"])
         self.assertNotIn("no forecast shortfall", d["note"])
         self.assertTrue(d["scenario_core"]["bed_demand"]["ICU"]["residual_message"])
-        self.assertEqual(d["scenario_core"]["bed_demand"]["ICU"]["what_would_help"][-1]["code"], "manager_escalation")
+        self.assertNotIn({"code": "manager_escalation", "params": {"beds": 101}}, d["scenario_core"]["bed_demand"]["ICU"]["what_would_help"])
         code, refusal = self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")
         self.assertEqual(code, 409)
         self.assertIn("ESCALATE", refusal["error"])

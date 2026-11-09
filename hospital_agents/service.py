@@ -87,8 +87,8 @@ class App:
             mult = float(body.get("multiplier", body.get("demand_multiplier", 1.0)))
         except (TypeError, ValueError):
             mult = math.nan
-        if unit not in ("ER", "ICU", "WARD") or not (math.isfinite(mult) and 0.1 <= mult <= 50):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "unit must be ER, ICU or WARD and multiplier within 0.1-50")
+        if unit not in ("ER", "ICU", "WARD", "CLINIC") or not (math.isfinite(mult) and 0.1 <= mult <= 50):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "unit must be ER, ICU, WARD or CLINIC and multiplier within 0.1-50")
         horizon = body.get("horizon", 7)
         seed = body.get("seed", 0)
         if isinstance(horizon, bool) or not isinstance(horizon, int) or not 1 <= horizon <= 30:
@@ -429,6 +429,10 @@ class App:
         from dataclasses import replace
         from hospital_agents.forecasting import _targets, _weekday_mean
 
+        if scenario.unit == "CLINIC":
+            return {"scope": "clinic_scheduling", "bed_demand": {}, "before_after_delta": {},
+                    "doctor_demand": {}, "resource_demand": {}, "notes": [], "rejected": [],
+                    "reschedules_accepted": [], "wait_revenue_overtime": {}}
         verified_capacity_changes = verified_capacity_changes or {}
         targets = _targets(self.twin)
         def weekday_values(key):
@@ -443,6 +447,7 @@ class App:
                        for u in BED_UNITS}
         arrivals_multiplier = 1.0
         staff_delta = {}
+        assumed_bed_additions = {u: 0 for u in BED_UNITS}
         # Keep modifications local to this immutable snapshot.
         pools = dict(snap.pools)
         slots = list(snap.slots)
@@ -481,6 +486,7 @@ class App:
                 if pool is None or pool.total + delta < pool.committed:
                     rejected.append({"intervention": item, "reason_code": "bed_change_below_occupied", "reason_params": {}})
                 elif delta > 0:
+                    assumed_bed_additions[item["unit"]] += delta
                     notes.append({"intervention": item, "status": "assumed", "warning_code": "bed_change_unverified", "warning_params": {}})
                 else:
                     pools[key] = replace(pool, total=pool.total + delta)
@@ -552,10 +558,21 @@ class App:
                 row["residual_shortfall_beds"] = residual
                 row["residual_message"] = ({"code": "unresolved_shortfall", "params": {"beds": residual}}
                                            if residual else None)
-                if residual:
-                    escalation = {"code": "manager_escalation", "params": {"beds": residual}}
-                    if escalation not in row["what_would_help"]:
-                        row["what_would_help"].append(escalation)
+                added = assumed_bed_additions[unit]
+                if added:
+                    staffed_total = row["beds"] + added
+                    template_ratio = {"ICU": 2, "WARD": 3}.get(unit)
+                    nurses = snap.pools.get(f"{unit}:nurses")
+                    row["bed_addition_assumption"] = {
+                        "status": "assumption", "label": "if added beds were staffed and equipped",
+                        "added_beds": added,
+                        "shortfall": max(0, math.ceil(row["demand"] - 1e-9) - staffed_total),
+                        "nurses_needed": math.ceil(staffed_total / template_ratio) if template_ratio else None,
+                        "nurses_on_shift": nurses.total if nurses else None,
+                        "observed_patients_per_nurse": round(staffed_total / nurses.total, 1) if nurses and nurses.total else None,
+                        "template_ratio": template_ratio,
+                        "template_approved": False,
+                    }
         arrivals = [value for value in weekday_values("er_arrivals") if value is not None]
         doctor_demand = {u: {"status": "abstain", "reason_code": "no_doctor_demand_baseline", "reason_params": {}} for u in BED_UNITS}
         resources = {u: {"status": "abstain", "reason_code": "no_resource_demand_baseline", "reason_params": {}} for u in BED_UNITS}
@@ -565,7 +582,8 @@ class App:
                                          for u in BED_UNITS},
                 "bed_demand": demand, "staff_delta": staff_delta,
                 "er_arrivals": {"status": "assumption", "label": assumption, "baseline_mean": round(sum(arrivals) / len(arrivals), 2) if arrivals else None,
-                                "scenario_mean": round(sum(arrivals) / len(arrivals) * arrivals_multiplier, 2) if arrivals else None},
+                                "scenario_mean": round(sum(arrivals) / len(arrivals) * arrivals_multiplier, 2) if arrivals else None,
+                                "bed_impact": {"status": "unavailable", "reason_code": "er_bed_relation_not_calibrated", "reason_params": {}}},
                 "doctor_demand": doctor_demand, "resource_demand": resources,
                 "reschedules_accepted": [x[1] for x in accepted_moves], "rejected": rejected, "notes": notes,
                 "wait_revenue_overtime": {k: {"status": "unavailable", "reason_code": "no_calibrated_simulation_inputs", "reason_params": {}} for k in ("wait", "revenue", "overtime")},
@@ -634,7 +652,8 @@ class App:
             view = decision.to_dict()
             language = body.get("language") if body.get("language") in ("ar", "en") else "ar"
             verified_beds = {u: int(decision.card.capacity_added.get(f"{u}:beds", 0)) for u in BED_UNITS}
-            scenario_core = self._scenario_core(as_of, scenario, inputs.twin, verified_beds)
+            scenario_core = (None if scenario.unit == "CLINIC" else
+                             self._scenario_core(as_of, scenario, inputs.twin, verified_beds))
             key = (as_of.isoformat(), scenario.unit, scenario.demand_multiplier, rev, fp)
             for rec in self.store.records.values():       # an identical earlier pending run is replaced by this one
                 if rec["status"] == "PENDING" and rec["key"] == list(key):
@@ -642,7 +661,7 @@ class App:
             # A residual assumption-based shortfall is an escalation, never a "no action required" outcome.
             reason = no_action_reason(decision)
             residual_total = sum(int((row or {}).get("residual_shortfall_beds", 0) or 0)
-                                 for row in scenario_core.get("bed_demand", {}).values())
+                                 for row in (scenario_core or {}).get("bed_demand", {}).values())
             status = ("PENDING" if reason is None else "ESCALATE" if residual_total > 0 else "NO_ACTION")
             now = datetime.now(timezone.utc).isoformat()
             for item, code_list in zip(view["rejected"], reason_codes(decision)):
@@ -723,6 +742,12 @@ class App:
         Never silently reinterpret invalid stored actions as safe.
         """
         try:
+            scenario_unit = rec.get("scenario", {}).get("unit")
+            if scenario_unit in BED_UNITS and any(
+                    isinstance(action_from_dict(action), Reschedule) and
+                    action_from_dict(action).from_slot.domain == "CLINIC"
+                    for item in rec.get("accepted", []) for action in item.get("actions", [])):
+                return "contains clinic appointment moves unrelated to the bed-demand scenario"
             as_of = self.parse_as_of(rec["as_of"])
             scenario = self.parse_scenario({"unit": rec["scenario"]["unit"],
                                             "multiplier": rec["scenario"]["demand_multiplier"]})

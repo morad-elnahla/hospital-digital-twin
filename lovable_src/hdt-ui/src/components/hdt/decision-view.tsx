@@ -51,7 +51,6 @@ function EscalationBanner({ d, t }: { d: any; t: T }) {
     <b className="text-sm text-bad">{t("st_ESCALATE")}</b>
     <ul className="mt-2 space-y-2 text-sm">{residuals.map(([unit, row]) => <li key={unit}>
       <p className="font-semibold">{t("unit_" + unit)}: {t("escalation_residual", { beds: row.residual_shortfall_beds })}</p>
-      {(row.what_would_help ?? []).map((item: any, i: number) => <p key={i} className="text-muted-foreground">{t("what_would_help")}: {scenarioMessage(item, t)}</p>)}
     </li>)}</ul>
     {d.escalation_note && <p className="mt-2 text-xs">{t("escalation_note_label")}: {d.escalation_note}</p>}
   </div>;

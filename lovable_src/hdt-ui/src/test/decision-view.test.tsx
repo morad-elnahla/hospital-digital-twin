@@ -78,9 +78,9 @@ describe("ESCALATE decisions", () => {
     } } };
     wrap(<DecisionViewBody d={d} t={t("ar")} />);
     const banner = screen.getByTestId("decision-escalation");
-    expect(banner).toHaveTextContent("يلزم التصعيد");
+    expect(banner).toHaveTextContent("تصعيد");
     expect(banner).toHaveTextContent("101");
-    expect(banner).toHaveTextContent("ما الذي قد يساعد");
+    expect(banner).not.toHaveTextContent("ما الذي قد يساعد");
     expect(banner).not.toHaveTextContent("لا يلزم إجراء");
   });
 });

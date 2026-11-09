@@ -180,12 +180,12 @@ class PluralAgreement(unittest.TestCase):
         self.assertIn("has 1 free minute of 60", Msg("or.verified_slot", room="OR-1", day="d", free=1, capacity=60, until="u"))
         cap = Msg("reb.nurse_cap", unit="ICU", nurses=1, ratio=1.0, max_beds=1, covered=1, wanted=3)
         self.assertIn("1 nurse on shift at 1 patient per nurse can staff at most 1 bed in ICU", cap)
-        base = Msg("warn.baseline_ratio", unit="ICU", beds=12, nurses=1, limit=2.0)
-        self.assertIn("12 beds / 1 nurse on shift compared with an unapproved ratio", base)
-        self.assertIn("template ratios are 2:1 ICU / 3:1 ward and neither is approved", base)
+        base = Msg("warn.baseline_ratio", unit="ICU", beds=12, nurses=1, observed_ratio=12, limit=2.0)
+        self.assertIn("12 beds / 1 nurse = 12 patients per nurse, above the unapproved 2:1 template ratio", base)
+        self.assertIn("2:1 ICU / 3:1 ward; neither template is approved", base)
         base_ar = base.render("ar")
-        self.assertIn("بنسبة غير معتمدة", base_ar)
-        self.assertIn("2:1 للعناية المركزة و3:1 للداخلي", base_ar)
+        self.assertIn("النسبة النموذجية غير المعتمدة", base_ar)
+        self.assertIn("2:1 للعناية المركزة / 3:1 للقسم الداخلي", base_ar)
 
     def test_executive_summary_wording(self):
         facts = {"decision_id": "d", "recommended_actions": ["a"], "rejected_count": 0, "critical_bottleneck": None,

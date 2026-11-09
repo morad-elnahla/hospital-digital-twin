@@ -69,15 +69,14 @@ def describe(a: Action) -> str:
 
 
 def baseline_ratio_warnings(inputs: SharedInputs) -> list[str]:
-    """Units that already exceed a sourced patients-per-nurse policy before any action."""
+    """Show baseline comparisons against clearly unapproved template ratios."""
     out = []
-    for key, pol in sorted(inputs.policies.values.items()):
-        if not key.startswith("nurse.max_patients_per_nurse:"):
-            continue
-        unit = key.rsplit(":", 1)[1]
+    for unit, limit in (("ICU", 2), ("WARD", 3)):
         beds, nurses = inputs.twin.pools.get(f"{unit}:beds"), inputs.twin.pools.get(f"{unit}:nurses")
-        if beds and nurses and pol.value > 0 and (nurses.total <= 0 or beds.total / nurses.total > pol.value + 1e-9):
-            out.append(Msg("warn.baseline_ratio", unit=unit, beds=beds.total, nurses=nurses.total, limit=pol.value))
+        if beds and nurses and (nurses.total <= 0 or beds.total / nurses.total > limit + 1e-9):
+            observed = round(beds.total / nurses.total, 1) if nurses.total else "∞"
+            out.append(Msg("warn.baseline_ratio", unit=unit, beds=beds.total, nurses=nurses.total,
+                           observed_ratio=observed, limit=limit))
     return out
 
 

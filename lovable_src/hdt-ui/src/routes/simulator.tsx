@@ -11,6 +11,7 @@ import { formatIntervention, formatScenarioAction, scenarioBedViews, scenarioMes
 import { cn } from "@/lib/utils";
 import { Empty, ErrorBox, PageHead, PageSkeleton, Panel, Pill } from "@/components/hdt/kit";
 import { DecisionView, UnavailableList } from "@/components/hdt/decision-view";
+import { DemandMultiplierControl } from "@/components/hdt/demand-multiplier-control";
 
 export const Route = createFileRoute("/simulator")({
   head: () => ({ meta: [{ title: "Scenario Lab · Hospital Digital Twin" }, { name: "description", content: "Compose and review operational scenarios against the hospital data." }] }),
@@ -77,13 +78,15 @@ function Simulator() {
         <label className="space-y-1 text-xs font-semibold">{t("scenario_unit")}
           <select value={unit} onChange={(e) => setUnit(e.target.value as any)} className="block w-full rounded-lg border bg-card px-3 py-2">{UNITS.map((u) => <option key={u} value={u}>{t("unit_" + u)}</option>)}</select>
         </label>
-        <label className="space-y-1 text-xs font-semibold">{t("seed")}
+      </div>
+      <div className="mt-4 max-w-2xl"><DemandMultiplierControl value={mult} onChange={setMult} label={t("demand_multiplier")} lang={lang} t={t} /></div>
+      <details className="mt-3 rounded-xl border p-3 text-sm">
+        <summary className="cursor-pointer font-semibold">{t("advanced_settings")}</summary>
+        <label className="mt-3 block max-w-sm space-y-1 text-xs font-semibold">{t("repeatability_number")}
+          <span className="ms-2 cursor-help text-muted-foreground" title={t("repeatability_tooltip")} aria-label={t("repeatability_tooltip")}>ⓘ</span>
           <input type="number" min={0} max={2147483647} value={seed} onChange={(e) => setSeed(Number(e.target.value))} className="num block w-full rounded-lg border bg-card px-3 py-2" />
         </label>
-      </div>
-      <label className="mt-4 block max-w-2xl text-xs font-semibold">{t("demand_multiplier")} <span className="num ms-2 text-base">×{mult}</span>
-        <input type="range" dir="ltr" min={0.1} max={50} step={0.1} value={mult} onChange={(e) => setMult(+e.target.value)} className="mt-2 w-full accent-[var(--primary)]" />
-      </label>
+      </details>
       <div className="mt-5 space-y-3">
         {interventions.map((x, i) => <InterventionEditor key={i} value={x} index={i} rooms={rooms} onChange={(p) => setInt(i, p)} onType={(type) => setInt(i, blank(type))} onRemove={() => setInterventions((xs) => xs.filter((_, n) => n !== i))} />)}
         <div className="flex flex-wrap items-center gap-2">
@@ -103,7 +106,7 @@ function Simulator() {
 
     {drafts.data && <Panel title={t("scenario_drafts")} sub={t("draft_review_help")} prov="agent">
       {user?.role === "clinician" && <p className="mb-3 rounded-lg bg-muted/60 p-3 text-xs">{t("draft_clinician_note")}</p>}
-      {drafts.data.length ? <ul className="space-y-2">{drafts.data.map((d: any) => <li key={d.id} className="flex flex-wrap items-center gap-3 rounded-lg border p-3 text-sm"><span className="num text-xs">{String(d.id).slice(0, 8)}</span><b>{t(`unit_${d.scenario?.unit}`)} ×{d.scenario?.demand_multiplier}</b><span className="text-xs text-muted-foreground">{fmtWhen(lang, d.scenario?.as_of)} · {d.status} · {d.created_by}</span><button onClick={() => reviewDraft(d)} className="ms-auto rounded-lg border px-3 py-1.5 text-xs font-semibold">{t("review_draft")}</button></li>)}</ul> : <Empty>{t("no_scenario_drafts")}</Empty>}
+      {drafts.data.length ? <ul className="space-y-2">{drafts.data.map((d: any) => <li key={d.id} className="flex flex-wrap items-center gap-3 rounded-lg border p-3 text-sm"><span className="num text-xs">{String(d.id).slice(0, 8)}</span><div className="min-w-48 flex-1"><b>{t(`unit_${d.scenario?.unit}`)} ×{d.scenario?.demand_multiplier}</b>{d.scenario?.interventions?.length > 0 && <ul className="mt-1 list-disc ps-5 text-xs text-muted-foreground">{d.scenario.interventions.map((item: any, i: number) => <li key={i}>{formatIntervention(item, lang, t)}</li>)}</ul>}</div><span className="text-xs text-muted-foreground">{fmtWhen(lang, d.scenario?.as_of)} · {d.status} · {d.created_by}</span><button onClick={() => reviewDraft(d)} className="ms-auto rounded-lg border px-3 py-1.5 text-xs font-semibold">{t("review_draft")}</button></li>)}</ul> : <Empty>{t("no_scenario_drafts")}</Empty>}
       {drafts.error && <ErrorBox error={drafts.error} />}
     </Panel>}
 
@@ -112,7 +115,7 @@ function Simulator() {
       <ScenarioCore r={r} />
       {r.scenario?.interventions?.length > 0 && <Panel title={t("scenario_interventions")} prov="simulation"><ul className="list-disc space-y-1 ps-5 text-sm">{r.scenario.interventions.map((item: any, i: number) => <li key={i} dir="auto">{formatIntervention(item, lang, t)}</li>)}</ul></Panel>}
       <Panel title={t("before_after")} sub={t("capacity_arith")} prov="simulation">
-        <div className="grid gap-3 md:grid-cols-3">{UNITS.map((u) => { const view = scenarioBedViews(u, r.before[u], r.after[u], r.core); return <BeforeAfter key={u} unit={u} b={view.before} a={view.after} change={r.bed_change[u]} />; })}</div>
+        <div className="grid gap-3 md:grid-cols-3">{UNITS.map((u) => { const view = scenarioBedViews(u, r.before[u], r.after[u], r.core); return <BeforeAfter key={u} unit={u} b={view.before} a={view.after} change={r.bed_change[u]} bedAssumption={r.core?.bed_demand?.[u]?.bed_addition_assumption} />; })}</div>
         <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4"><Fact l={t("cost")} v={`${fmt(r.capacity_cost_change_egp_per_day, 0)} ${t("u_EGP/day")}`} /><Fact l={t("rescheduled")} v={fmt(r.rescheduled_bookings, 0)} /></div>
       </Panel>
       <Panel title={t("proposed_actions")} sub={t("proposed_actions_sub")} prov="agent">
@@ -147,13 +150,13 @@ function ScenarioCore({ r }: { r: any }) {
   const { t, lang } = useApp();
   const core = r.core ?? {};
   return <Panel title={t("scenario_core")} sub={t("assumption_label")} prov="simulation">
-    <div className="overflow-x-auto"><table className="w-full text-start text-xs"><thead><tr className="border-b text-muted-foreground"><th className="p-2">{t("department")}</th><th className="p-2">{t("baseline")}</th><th className="p-2">{t("scenario_demand")}</th><th className="p-2">{t("delta")}</th><th className="p-2">{t("shortfall")}</th><th className="p-2">{t("nurse_need")}</th><th className="p-2">{t("nurse_available")}</th></tr></thead><tbody>{UNITS.map((u) => { const d = core.bed_demand?.[u] ?? {}; const n = d.nurse_demand ?? {}; const delta = core.before_after_delta?.[u] ?? {}; return <tr key={u} className="border-b"><th className="p-2">{t("unit_" + u)}</th><td className="num p-2">{fmt(d.baseline, 1)}</td><td className="num p-2">{fmt(d.demand, 1)}</td><td className="num p-2">{fmt(delta.delta, 1)}</td><td className="num p-2 text-bad">{fmt(d.shortfall, 0)}</td><td className="num p-2">{fmt(n.required, 1)}</td><td className="num p-2">{fmt(n.available, 0)}</td></tr>; })}</tbody></table></div>
+    <div className="overflow-x-auto"><table className="w-full text-start text-xs"><thead><tr className="border-b text-muted-foreground"><th className="p-2">{t("department")}</th><th className="p-2">{t("baseline")}</th><th className="p-2">{t("scenario_demand")}</th><th className="p-2" title={t("change_explainer")}>{t("delta")} ⓘ</th><th className="p-2">{t("shortfall")}</th><th className="p-2">{t("nurse_need")}</th><th className="p-2">{t("nurse_available")}</th></tr></thead><tbody>{UNITS.map((u) => { const d = core.bed_demand?.[u] ?? {}; const n = d.nurse_demand ?? {}; const delta = core.before_after_delta?.[u] ?? {}; return <tr key={u} className="border-b"><th className="p-2">{t("unit_" + u)}</th><td className="num p-2">{fmt(d.baseline, 1)}</td><td className="num p-2">{fmt(d.demand, 1)}</td><td className="num p-2">{fmt(delta.delta, 1)}</td><td className="num p-2 text-bad">{fmt(d.shortfall, 0)}</td><td className="num p-2">{fmt(n.required, 1)}</td><td className="num p-2">{fmt(n.available, 0)}</td></tr>; })}</tbody></table></div>
+    <p className="mt-1 text-[11px] text-muted-foreground">{t("change_explainer")}</p>
     <p className="mt-2 text-xs font-semibold text-warn">{t("assumption_label")}</p>
-    {core.er_arrivals && <p className="mt-2 text-xs" dir="auto">{t("arrivals_transition", { before: fmt(core.er_arrivals.baseline_mean, 1), after: fmt(core.er_arrivals.scenario_mean, 1) })} · {t("assumption_label")}</p>}
+    {core.er_arrivals && <p className="mt-2 text-xs" dir="auto">{t("arrivals_transition", { before: fmt(core.er_arrivals.baseline_mean, 1), after: fmt(core.er_arrivals.scenario_mean, 1) })} · {t("assumption_label")}{r.scenario?.interventions?.some((x: any) => x.type === "er_arrivals_surge") && <><br />{t("er_bed_impact_line", { reason: scenarioMessage(core.er_arrivals.bed_impact, t) })}</>}</p>}
     <div className="mt-2 text-xs text-muted-foreground">{[...Object.entries(core.doctor_demand ?? {}), ...Object.entries(core.resource_demand ?? {})].map(([u, d]: any) => <p key={`${u}-${d.status}`} dir="auto">{t(`unit_${u}`)}: {t(`status_${d.status}`)} — {scenarioMessage({ code: d.reason_code, params: d.reason_params }, t)}</p>)}</div>
     <div className="mt-2 space-y-1 text-xs">{UNITS.map((u) => { const d = core.bed_demand?.[u] ?? {}; const unit = t(`unit_${u}`); return <div key={u} dir="auto">
       {d.status === "abstain" && <p>{t("scenario_unit_reason_line", { unit, reason: scenarioMessage({ code: d.reason_code, params: d.reason_params }, t) })}</p>}
-      {d.residual_message && <p className="font-semibold text-bad">{t("scenario_unit_reason_line", { unit, reason: scenarioMessage(d.residual_message, t) })}</p>}
       {d.why_nothing_moved && <p>{t("scenario_unit_why_line", { unit, label: t("why_nothing_moved"), reason: scenarioMessage(d.why_nothing_moved, t) })}</p>}
       {(d.what_would_help ?? []).map((x: any, i: number) => <p key={i}>{t("scenario_unit_help_line", { unit, label: t("what_would_help"), reason: scenarioMessage(x, t) })}</p>)}
     </div>; })}</div>
@@ -162,9 +165,10 @@ function ScenarioCore({ r }: { r: any }) {
 
 function Fact({ l, v }: { l: string; v: string }) { return <div className="surface p-3"><div className="num text-lg font-bold">{v}</div><div className="truncate text-[11px] text-muted-foreground">{l}</div></div>; }
 
-function BeforeAfter({ unit, b, a, change }: { unit: string; b: any; a: any; change: number }) {
+function BeforeAfter({ unit, b, a, change, bedAssumption }: { unit: string; b: any; a: any; change: number; bedAssumption?: any }) {
   const { t } = useApp();
   const max = Math.max(b.beds, a.beds, b.peak_demand_beds ?? 0, a.peak_demand_beds ?? 0, 1);
   const row = (label: string, s: any, tone: string) => <div><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">{label}</span><span className="num">{s.beds} {t("u_beds")}</span></div><div className="relative h-3 rounded-full bg-muted"><motion.div className="absolute inset-y-0 start-0 rounded-full" style={{ background: tone }} initial={{ width: 0 }} animate={{ width: `${(100 * s.beds) / max}%` }} transition={{ duration: 0.9 }} />{s.peak_demand_beds != null && <motion.div className="absolute inset-y-[-3px] w-0.5 bg-bad" initial={{ insetInlineStart: 0 }} animate={{ insetInlineStart: `${(100 * s.peak_demand_beds) / max}%` }} transition={{ duration: 0.9 }} />}</div></div>;
-  return <div className="surface space-y-3 p-4"><div className="flex items-center justify-between"><b>{t("unit_" + unit)}</b>{change !== 0 && <Pill tone={change > 0 ? "good" : "warn"}><span className="num">{change > 0 ? "+" : ""}{change}</span></Pill>}</div>{row(t("before"), b, "var(--observed)")}{row(t("after"), a, "var(--agent)")}<div className="grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted/60 p-2"><div className="num font-bold">{b.peak_utilisation_pct == null ? "—" : fmt(b.peak_utilisation_pct) + "%"} → {a.peak_utilisation_pct == null ? "—" : fmt(a.peak_utilisation_pct) + "%"}</div><div className="text-muted-foreground">{t("utilisation")}</div></div><div className="rounded-lg bg-muted/60 p-2"><div className={cn("num font-bold", a.shortfall_beds ? "text-bad" : "")}>{a.shortfall_beds ?? "—"}</div><div className="text-muted-foreground">{t("shortfall_beds")}</div></div></div>{a.assumed_relief_beds != null && <div className="text-[11px] text-warn">{t("if_assumed", { r: a.assumed_relief_beds, n: a.shortfall_if_assumed_beds ?? "—" })}</div>}</div>;
+  const over = (s: any) => s.beds > 0 && s.peak_utilisation_pct > 100 ? t("demand_exceeds_capacity", { n: fmt((s.peak_demand_beds / s.beds) - 1, 1) }) : null;
+  return <div className="surface space-y-3 p-4"><div className="flex items-center justify-between"><b>{t("unit_" + unit)}</b>{change !== 0 && <Pill tone={change > 0 ? "good" : "warn"}><span className="num">{change > 0 ? "+" : ""}{change}</span></Pill>}</div>{row(t("before"), b, "var(--observed)")}{row(t("after"), a, "var(--agent)")}<div className="grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-muted/60 p-2"><div className="num font-bold">{b.peak_utilisation_pct == null ? "—" : fmt(b.peak_utilisation_pct) + "%"} → {a.peak_utilisation_pct == null ? "—" : fmt(a.peak_utilisation_pct) + "%"}</div>{(over(b) || over(a)) && <div className="space-y-0.5 text-bad">{over(b) && <p>{t("before")}: {over(b)}</p>}{over(a) && <p>{t("after")}: {over(a)}</p>}</div>}<div className="text-muted-foreground">{t("utilisation")}</div></div><div className="rounded-lg bg-muted/60 p-2"><div className={cn("num font-bold", a.shortfall_beds ? "text-bad" : "")}>{a.shortfall_beds ?? "—"}</div><div className="text-muted-foreground">{t("shortfall_beds")}</div></div></div>{bedAssumption && <div className="rounded-lg border border-warn/40 bg-warn/5 p-2 text-xs text-warn"><b>{t("bed_addition_assumption", { n: bedAssumption.added_beds, shortfall: bedAssumption.shortfall })}</b>{bedAssumption.template_ratio ? <p>{t("nurse_whatif", { unit: t(`unit_${unit}`), beds: a.beds + bedAssumption.added_beds, nurses: bedAssumption.nurses_on_shift ?? "—", observed: bedAssumption.observed_patients_per_nurse ?? "—", needed: bedAssumption.nurses_needed, ratio: bedAssumption.template_ratio })}</p> : <p>{t("nurse_whatif_unavailable")}</p>}</div>}{a.assumed_relief_beds != null && <div className="text-[11px] text-warn">{t("if_assumed", { r: a.assumed_relief_beds, n: a.shortfall_if_assumed_beds ?? "—" })}</div>}</div>;
 }
