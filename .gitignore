@@ -3,6 +3,8 @@
 !.env.example
 runtime/
 policies/
+!tests/fixtures/policies/
+!tests/fixtures/policies/**
 __pycache__/
 .pytest_cache/
 *.pyc
