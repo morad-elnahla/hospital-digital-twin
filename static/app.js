@@ -375,6 +375,7 @@ pages.simulator = async root => {
     const r = S.sim;
     fill(out, head(t("nav_simulator"), t("sim_sub")),
       scenarioControls(async () => { S.sim = await api("/api/simulate", { as_of: $("asof").value, unit: S.scn.unit, multiplier: S.scn.mult, language: S.lang }); draw(); }, t("run_preview"),
+        h("button", { class: "btn", disabled: !can("run"), onclick: async () => { try { const d = await api("/api/scenario-drafts", { as_of: $("asof").value, unit: S.scn.unit, multiplier: S.scn.mult, language: S.lang }); toast(t("draft_saved", { id: d.id.slice(0, 8) })); } catch (e) { toast(e.message, "bad"); } } }, t("save_scenario_draft")),
         h("button", { class: "btn", disabled: !can("run") || !r, title: t("save_tip"), onclick: async () => { try { S.lastRun = await api("/api/run", { as_of: $("asof").value, unit: S.scn.unit, multiplier: S.scn.mult, language: S.lang }); toast(t("decision_created")); go("decisions"); } catch (e) { toast(e.message, "bad"); } } }, t("save_decision"))),
       r ? simResult(r) : empty(t("sim_prompt"), "simulator"));
   };
@@ -500,10 +501,11 @@ pages.sources = async root => {
 // ───────────────────────── data quality & system ─────────────────────────
 pages.system = async root => {
   const [st, ql, pol] = await Promise.all([api("/api/status"), api("/api/quality"), api("/api/policies")]);
-  const unitForm = u => { const cur = pol.nurse_ratio.find(p => p.unit === u), input = h("input", { type: "number", min: 0.5, step: 0.5, value: cur ? cur.value : "", placeholder: t("max_patients"), "aria-label": `${unitName(u)} ${t("max_patients")}`, disabled: !can("policy") });
+  const unitForm = u => { const cur = pol.nurse_ratio.find(p => p.unit === u), input = h("input", { type: "number", min: 0.5, step: 0.5, value: cur?.value ?? "", placeholder: t("max_patients"), "aria-label": `${unitName(u)} ${t("max_patients")}`, disabled: !can("policy") });
     const send = v => async () => { try { await api("/api/policies", { unit: u, value: v }); toast(t("policy_saved")); render(); } catch (e) { toast(e.message, "bad"); } };
-    return [h("b", {}, unitName(u)), h("span", { class: "small" }, cur ? [`${t("current")}: `, NUM(cur.value), h("div", { class: "faint" }, cur.source)] : h("span", { class: "mute" }, t("not_set"))),
-      h("div", { class: "range" }, input, h("button", { class: "btn small primary", disabled: !can("policy"), onclick: () => send(input.value)() }, t("save")), cur && h("button", { class: "btn small danger", disabled: !can("policy"), onclick: send(null) }, t("remove")))]; };
+    const approve = async () => { try { await api("/api/policies", { unit: u, approve: true }); toast(t("policy_approved")); render(); } catch (e) { toast(e.message, "bad"); } };
+    return [h("b", {}, unitName(u)), h("span", { class: "small" }, cur?.value != null ? [`${t("current")}: `, NUM(cur.value), cur.approved === false && h("div", { class: "faint" }, t("draft_unapproved")), h("div", { class: "faint" }, cur.source)] : h("span", { class: "mute" }, t("not_set"))),
+      h("div", { class: "range" }, input, h("button", { class: "btn small primary", disabled: !can("policy"), onclick: () => send(input.value)() }, t("save")), cur?.value != null && cur.approved === false && h("button", { class: "btn small", disabled: !can("policy"), onclick: approve }, t("approve_policy")), cur?.value != null && h("button", { class: "btn small danger", disabled: !can("policy"), onclick: send(null) }, t("remove")))]; };
   const result = h("div"), testBtn = h("button", { class: "btn", disabled: !can("run"), title: can("run") ? "" : t("no_permission"), onclick: async () => {
     testBtn.disabled = true; fill(result, h("span", { class: "mute" }, t("testing")));
     try { const r = await api("/api/llm-test", {}); fill(result, pill(r.ok ? t("test_ok") : t("test_fail"), r.ok ? "good" : "high"), " ", h("span", {}, t("llm_cat_" + r.category)), r.latency_ms != null && h("span", { class: "faint small" }, ` · ${r.latency_ms} ms`), r.models_available != null && h("span", { class: "faint small" }, ` · ${t("models_n", { n: r.models_available })}`)); S.llmOn = r.ok || S.llmOn; if (r.ok) buildChrome(); }

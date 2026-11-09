@@ -1,0 +1,22 @@
+[
+  {"language":"en","question":"patient flow escalation policy","expected_source_id":"src002"},
+  {"language":"en","question":"escalation for delayed discharge and patient flow","expected_source_id":"src002"},
+  {"language":"en","question":"patient flow capacity escalation actions","expected_source_id":"src002"},
+  {"language":"en","question":"hospital escalation levels for flow","expected_source_id":"src002"},
+  {"language":"en","question":"who is responsible for escalating patient flow","expected_source_id":"src002"},
+  {"language":"en","question":"GAHAR hospital standards for effective safe patient flow","expected_source_id":"src001"},
+  {"language":"en","question":"patient education evidence based information discharge instructions GAHAR","expected_source_id":"src001"},
+  {"language":"en","question":"safe transfusion services standards","expected_source_id":"src001"},
+  {"language":"en","question":"medication selection and procurement standards","expected_source_id":"src001"},
+  {"language":"en","question":"patient centered care standards hospital GAHAR","expected_source_id":"src001"},
+  {"language":"ar","question":"سياسة تصعيد تدفق المرضى في المستشفى","expected_source_id":"src002"},
+  {"language":"ar","question":"متى يتم تصعيد تأخر خروج المرضى؟","expected_source_id":"src002"},
+  {"language":"ar","question":"من المسؤول عن تصعيد السعة وتدفق المرضى؟","expected_source_id":"src002"},
+  {"language":"ar","question":"ما مستويات التصعيد عند تأخر المرضى؟","expected_source_id":"src002"},
+  {"language":"ar","question":"كيف تعالج السياسة ازدحام تدفق المرضى؟","expected_source_id":"src002"},
+  {"language":"ar","question":"معايير جودة المستشفيات لتدفق المرضى الآمن","expected_source_id":"src001"},
+  {"language":"ar","question":"ما متطلبات تثقيف المرضى والمعلومات المبنية على الدليل؟","expected_source_id":"src001"},
+  {"language":"ar","question":"ما معايير خدمات نقل الدم الآمنة؟","expected_source_id":"src001"},
+  {"language":"ar","question":"كيف يتم اختيار الأدوية وشراؤها وفق المعايير؟","expected_source_id":"src001"},
+  {"language":"ar","question":"ما متطلبات الرعاية المتمحورة حول المريض؟","expected_source_id":"src001"}
+]

@@ -20,7 +20,7 @@ from datetime import datetime
 from typing import Any
 
 from . import insights, llm
-from .explain import parse_structured, validate_structured
+from .explain import parse_structured, validate_structured_detailed
 from .messages import plural
 
 MAX_TURNS = 16
@@ -114,6 +114,7 @@ class Assistant:
         intent, unit = self.route(message, history[-1] if history else None)
         evidence: list[dict] = []
         notes: list[str] = []
+        validation_failures: list[dict] = []
         mode, answer = "local", ""
         if intent == "actions":
             answer = T("I cannot approve, apply, reject or roll back anything. An Operations Manager does that on the Decisions page, with a documented approval, and only in the sandbox.",
@@ -134,20 +135,23 @@ class Assistant:
             local = " ".join(f"{e['text']} [{e['id']}]" for e in evidence)
             answer = local or T("No data is available for that question at this moment.", "لا تتوفر بيانات لهذا السؤال في هذه اللحظة.")
             if evidence and llm.config()["configured"]:
-                result = self._ask_llm(message, history, evidence, lang)
+                result = self._ask_llm(user, message, history, evidence, lang)
                 if result["answer"]:
                     answer, mode = result["answer"], "llm"
                 else:
                     mode = "llm_fallback"
                     notes.append(result["note"])
+                    validation_failures = result.get("validation_failures", [])
         out = {"answer": answer, "mode": mode, "intent": intent, "unit": unit, "evidence": evidence, "notes": notes,
+               "validation_failures": validation_failures,
+               "fallback": "template" if mode == "llm_fallback" else None,
                "suggestions": SUGGESTIONS[lang] if intent in ("unknown", "actions", "clinical") else [], "as_of": as_of.isoformat()}
         self._remember(user, role="user", text=message, intent=intent, unit=unit)
         self._remember(user, role="assistant", text=re.sub(r"\s*\[E\d+\]", "", answer), intent=intent, unit=unit)
         return out
 
     # ── LLM path ──
-    def _ask_llm(self, message: str, history: list[dict], evidence: list[dict], lang: str) -> dict:
+    def _ask_llm(self, user: str, message: str, history: list[dict], evidence: list[dict], lang: str) -> dict:
         by_id = {e["id"]: e["text"] for e in evidence}
         system = ("You answer questions for a hospital operations dashboard. Use ONLY the evidence sentences provided. Reply with ONLY JSON: "
                   '{"sentences":[{"text":"...","evidence":["E1"]}]} with at most 6 sentences. Every sentence must cite the evidence ids it uses, may only restate or combine them, '
@@ -162,9 +166,13 @@ class Assistant:
         except Exception:
             return {"answer": None, "note": "llm_error"}
         items = parse_structured(text)
-        sentences = validate_structured(items, by_id, max_sentences=6) if items else None
+        sentences, failures = validate_structured_detailed(items, by_id, max_sentences=6, raw_response=text)
         if not sentences:
-            return {"answer": None, "note": "llm_unsupported"}
+            safe = [{"index": f.get("index"), "claim": f.get("claim"), "reason": f["reason"], "evidence": f.get("evidence", [])}
+                    for f in failures]
+            for failure in safe:
+                self.app.log(user, "llm.unsupported", validator="assistant_evidence_v1", **failure)
+            return {"answer": None, "note": "llm_unsupported", "validation_failures": safe}
         return {"answer": " ".join(f"{s} [{', '.join(i['evidence'])}]" for s, i in zip(sentences, items)), "note": None}
 
     # ── evidence ──

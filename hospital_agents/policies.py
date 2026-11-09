@@ -44,6 +44,7 @@ class PolicyDoc:
     unit: str | None = None
     value: float | None = None
     expires: date | None = None
+    approved: bool = True
 
 
 def parse_policy(path: Path) -> PolicyDoc:
@@ -70,8 +71,11 @@ def parse_policy(path: Path) -> PolicyDoc:
         expires = date.fromisoformat(head["expires"]) if "expires" in head else None
     except ValueError as e:
         raise PolicyStoreError(f"{path.name}: {e}") from None
+    approved_raw = head.get("approved", "true").lower()
+    if approved_raw not in {"true", "false"}:
+        raise PolicyStoreError(f"{path.name}: approved must be true or false")
     return PolicyDoc(head["id"], head["source"], m.group(2).strip(),
-                     head.get("key"), head.get("unit"), value, expires)
+                     head.get("key"), head.get("unit"), value, expires, approved_raw == "true")
 
 
 _DIACRITICS = re.compile(r"[\u064B-\u0652\u0640]")
@@ -127,7 +131,7 @@ class FolderPolicyRetriever:
     async def values(self, units: Sequence[str], as_of: datetime) -> PolicyBundle:
         today, wanted, out = as_of.date(), set(units), {}
         for d in self.docs:
-            if d.key is None or d.unit not in wanted or (d.expires and d.expires <= today):
+            if d.key is None or not d.approved or d.unit not in wanted or (d.expires and d.expires <= today):
                 continue
             k = f"{d.key}:{d.unit}"
             if k in out and out[k].value != d.value:

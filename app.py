@@ -37,7 +37,7 @@ from hospital_agents.card import describe
 from hospital_agents.messages import Msg, codes, render
 from hospital_agents.policies import CompositeRetriever, CorpusRetriever, FolderPolicyRetriever
 from hospital_agents.ports import AuditEvent
-from hospital_agents.store import DecisionStore
+from hospital_agents.store import DecisionStore, atomic_write
 from hospital_agents.twin_data import BED_UNITS, Scenario, TwinData, apply_actions
 
 ROOT = Path(__file__).resolve().parent
@@ -64,6 +64,8 @@ class App:
         self.audit = JsonlAudit(self.runtime / "audit.jsonl")
         self.auth = Auth(self.runtime / "users.json")
         self.store = DecisionStore(self.runtime)
+        self.drafts_path = self.runtime / "scenario_drafts.json"
+        self.scenario_drafts = json.loads(self.drafts_path.read_text(encoding="utf-8")) if self.drafts_path.exists() else {}
         self.assistant = Assistant(self)
         self._alert_cache: dict[tuple, dict] = {}
 
@@ -300,7 +302,7 @@ class App:
                     "status": s.get("status"), "license": s.get("license_note") or s.get("license") or s.get("reuse") or None}
                    for s in (self.corpus.sources.values() if self.corpus else [])]
         values = [{"unit": d.unit, "key": d.key, "value": d.value, "source": d.source}
-                  for d in FolderPolicyRetriever(self.policy_dir).docs if d.key]
+                  for d in FolderPolicyRetriever(self.policy_dir).docs if d.key and d.approved]
         return {"query": query, "passages": [{"id": p.doc_id, "source": p.source, "text": p.text[:600], "score": p.score, "kind": kind(p)} for p in passages],
                 "sources": sources, "corpus": getattr(self.corpus, "stats", None), "policy_values": values,
                 "pack_policies": [{"id": d.id, "source": d.source, "text": d.text} for d in self.twin.policy_docs()]}
@@ -558,6 +560,28 @@ class App:
         params = json.loads(row[0])
         return self.simulate(params)
 
+    def save_scenario_draft(self, body: dict, principal: Principal | None = None) -> dict:
+        actor = self._need(principal, "run")
+        as_of = self.parse_as_of(body.get("as_of"))
+        scenario = self.parse_scenario(body)
+        from dataclasses import replace
+        scenario = replace(scenario, as_of=as_of.isoformat(), created_by=actor.username)
+        draft_id = str(uuid.uuid4())
+        draft = {"id": draft_id, "status": "DRAFT", "created_at": datetime.now(timezone.utc).isoformat(),
+                 "created_by": actor.username, "scenario": to_jsonable(scenario)}
+        with self.lock:
+            self.scenario_drafts[draft_id] = draft
+            atomic_write(self.drafts_path, json.dumps(self.scenario_drafts, ensure_ascii=False, indent=2), private=True)
+        self.log(actor.username, "scenario.draft_saved", scenario_id=draft_id, seed=scenario.seed)
+        return draft
+
+    def list_scenario_drafts(self, principal: Principal | None = None) -> list[dict]:
+        actor = self._need(principal, "run")
+        rows = self.scenario_drafts.values()
+        if actor.role != "operations_manager":
+            rows = (r for r in rows if r["created_by"] == actor.username)
+        return sorted(rows, key=lambda r: r["created_at"], reverse=True)
+
     # ───────────── decisions ─────────────
     def run(self, body: dict, principal: Principal | None = None) -> dict:
         """Run the agents and store the result as a PENDING decision."""
@@ -725,8 +749,11 @@ class App:
     # source says so; it is NOT an approved hospital policy and the dashboard labels it accordingly.
     def policies(self) -> dict:
         r = FolderPolicyRetriever(self.policy_dir)
-        return {"nurse_ratio": [{"unit": d.unit, "value": d.value, "source": d.source}
-                                for d in r.docs if d.key == "nurse.max_patients_per_nurse"], "fingerprint": self.policy_fingerprint()[:12]}
+        rows = [{"unit": d.unit, "value": d.value, "source": d.source, "approved": d.approved}
+                for d in r.docs if d.key == "nurse.max_patients_per_nurse"]
+        if not any(d.unit == "ER" and d.key == "nurse.max_patients_per_nurse" for d in r.docs):
+            rows.append({"unit": "ER", "value": None, "source": "Unapproved template; requires a manager-entered value and approval", "approved": False})
+        return {"nurse_ratio": rows, "fingerprint": self.policy_fingerprint()[:12]}
 
     def set_policy(self, body: dict, principal: Principal | None = None) -> dict:
         actor = self._need(principal, "policy")
@@ -735,7 +762,20 @@ class App:
             raise ApiError(HTTPStatus.BAD_REQUEST, "unit must be ER, ICU or WARD")
         path = self.policy_dir / f"dashboard-nurse-ratio-{unit}.md"
         with self.lock:
-            if body.get("value") in (None, ""):
+            if body.get("approve") is True:
+                if unit != "ER" or not path.exists():
+                    raise ApiError(HTTPStatus.CONFLICT, "an ER nurse-ratio draft with a value is required before approval")
+                from hospital_agents.policies import parse_policy
+                current = parse_policy(path)
+                if current.value is None:
+                    raise ApiError(HTTPStatus.CONFLICT, "enter a positive ER nurse-ratio value before approval")
+                stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                path.write_text(
+                    f"---\nid: dashboard-nurse-ratio-ER\nsource: Entered and approved in the dashboard by {actor.username} ({actor.label}) at {stamp}; not a hospital clinical policy\n"
+                    f"key: nurse.max_patients_per_nurse\nunit: ER\nvalue: {current.value:g}\napproved: true\n---\n"
+                    "Manager-entered ER operational constraint. Not a clinical standard.\n", encoding="utf-8")
+                self.log(actor.username, "policy.approved", role=actor.role, unit=unit, value=current.value)
+            elif body.get("value") in (None, ""):
                 path.unlink(missing_ok=True)
                 self.log(actor.username, "policy.removed", role=actor.role, unit=unit)
             else:
@@ -746,12 +786,14 @@ class App:
                 if not (math.isfinite(value) and value > 0):
                     raise ApiError(HTTPStatus.BAD_REQUEST, "value must be a positive number (max patients per nurse)")
                 stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                approved = unit != "ER"
+                source = (f"Entered in the dashboard by {actor.username} ({actor.label}) at {stamp} - NOT an approved hospital policy"
+                          if unit != "ER" else f"Unapproved ER draft entered by {actor.username} ({actor.label}) at {stamp}")
                 path.write_text(
                     f"---\nid: dashboard-nurse-ratio-{unit}\n"
-                    f"source: Entered in the dashboard by {actor.username} ({actor.label}) at {stamp} - NOT an approved hospital policy\n"
-                    f"key: nurse.max_patients_per_nurse\nunit: {unit}\nvalue: {value:g}\n---\n"
+                    f"source: {source}\nkey: nurse.max_patients_per_nurse\nunit: {unit}\nvalue: {value:g}\napproved: {str(approved).lower()}\n---\n"
                     f"Maximum patients per nurse for {unit}, as entered by {actor.username}.\n", encoding="utf-8")
-                self.log(actor.username, "policy.set", role=actor.role, unit=unit, value=value)
+                self.log(actor.username, "policy.draft_saved" if unit == "ER" else "policy.set", role=actor.role, unit=unit, value=value)
         return self.policies()
 
 
@@ -821,9 +863,11 @@ class Handler(BaseHTTPRequestHandler):
                 ("POST", "assistant"): lambda: a.assistant_ask(body, principal), ("POST", "llm-test"): lambda: a.llm_test(principal),
                 ("GET", "decisions"): lambda: a.decisions(q.get("lang", [None])[0]), ("GET", "sandbox"): a.sandbox, ("GET", "audit"): a.audit_tail,
                 ("GET", "policies"): a.policies,
+                ("GET", "scenario-drafts"): lambda: a.list_scenario_drafts(principal),
                 ("POST", "simulate"): lambda: a.simulate(body, a._need(principal, "run")),
                 ("POST", "run"): lambda: a.run(body, a._need(principal, "run")),
                 ("POST", "policies"): lambda: a.set_policy(body, principal),
+                ("POST", "scenario-drafts"): lambda: a.save_scenario_draft(body, principal),
                 ("POST", "rollback"): lambda: a.rollback(body, principal),
                 ("POST", "logout"): lambda: (a.auth.logout(self.headers.get("Authorization", "")[7:]), {"ok": True})[1],
             }

@@ -37,7 +37,8 @@ class AuthUnit(unittest.TestCase):
         self.assertIsNone(self.auth.principal(token))
 
     def test_permissions(self):
-        for role, can in (("viewer", {"read"}), ("analyst", {"read", "run"}), ("operations_manager", {"read", "run", "decide", "policy"})):
+        for role, can in (("viewer", {"read"}), ("clinician", {"read", "run"}),
+                          ("analyst", {"read", "run"}), ("operations_manager", {"read", "run", "decide", "policy"})):
             p = Principal("x", role)
             self.assertEqual({k for k in ("read", "run", "decide", "policy") if p.can(k)}, can)
         with self.assertRaises(AuthError):

@@ -6,6 +6,7 @@ stored as salted PBKDF2-HMAC-SHA256 hashes; sessions are random bearer tokens he
 
 Roles, least to most privileged:
     viewer              read dashboards
+    clinician           + author scenarios, run simulations and save drafts
     analyst             + run agents and simulations
     operations_manager  + approve / reject / roll back decisions, change policies
 """
@@ -22,11 +23,11 @@ from pathlib import Path
 
 from .store import atomic_write
 
-ROLES = ("viewer", "analyst", "operations_manager")
-ROLE_LABELS = {"viewer": "Viewer", "analyst": "Analyst", "operations_manager": "Operations Manager"}
+ROLES = ("viewer", "clinician", "analyst", "operations_manager")
+ROLE_LABELS = {"viewer": "Viewer", "clinician": "Clinician", "analyst": "Analyst", "operations_manager": "Operations Manager"}
 PERMISSIONS = {
     "read": ROLES,
-    "run": ("analyst", "operations_manager"),
+    "run": ("clinician", "analyst", "operations_manager"),
     "decide": ("operations_manager",),      # approve / reject / roll back
     "policy": ("operations_manager",),      # change structured policies
 }

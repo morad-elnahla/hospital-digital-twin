@@ -20,14 +20,14 @@ _auth.ITERATIONS = 2000   # tests only: keep sign-ins fast; production uses 200 
 _SHARED_TWIN = A.TwinData(ROOT / "data")  # immutable CSV snapshot shared; App/runtime state stays isolated
 
 STRESS = {"unit": "ICU", "multiplier": 12, "language": "en"}
-PASSWORDS = {"manager": "manager-pass-1", "analyst": "analyst-pass-1", "viewer": "viewer-pass-1"}
+PASSWORDS = {"manager": "manager-pass-1", "analyst": "analyst-pass-1", "clinician": "clinician-pass-1", "viewer": "viewer-pass-1"}
 
 
 class Api(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.start()
-        for name, role in (("manager", "operations_manager"), ("analyst", "analyst"), ("viewer", "viewer")):
+        for name, role in (("manager", "operations_manager"), ("analyst", "analyst"), ("clinician", "clinician"), ("viewer", "viewer")):
             self.app.auth.users.pop(name, None)
             self.app.auth.create_user(name, PASSWORDS[name], role)
         self.tokens = {}
@@ -78,6 +78,26 @@ class Api(unittest.TestCase):
         s, e = self.call(f"/api/decisions/{d['id']}/approve", {"role": "Operations Manager"}, "analyst")
         self.assertEqual(s, 403)
         self.assertEqual(self.call(f"/api/decisions/{d['id']}/approve", {"role": "operations_manager"}, "viewer")[0], 403)
+
+    def test_clinician_can_preview_and_save_drafts_but_cannot_approve(self):
+        self.assertEqual(self.call("/api/simulate", {"unit": "ICU", "multiplier": 1.3}, "clinician")[0], 200)
+        status, draft = self.call("/api/scenario-drafts", {"unit": "ICU", "multiplier": 1.3, "seed": 7}, "clinician")
+        self.assertEqual((status, draft["status"], draft["created_by"], draft["scenario"]["seed"]),
+                         (200, "DRAFT", "clinician", 7))
+        self.assertEqual(self.call("/api/scenario-drafts", who="clinician")[1][0]["id"], draft["id"])
+        _, decision = self.call("/api/run", STRESS, "analyst")
+        self.assertEqual(self.call(f"/api/decisions/{decision['id']}/approve", {}, "clinician")[0], 403)
+
+    def test_er_nurse_ratio_requires_manager_entry_then_explicit_approval(self):
+        row = next(x for x in self.call("/api/policies", who="viewer")[1]["nurse_ratio"] if x["unit"] == "ER")
+        self.assertEqual((row["value"], row["approved"]), (None, False))
+        self.assertEqual(self.call("/api/policies", {"unit": "ER", "value": 5}, "manager")[0], 200)
+        row = next(x for x in self.call("/api/policies", who="viewer")[1]["nurse_ratio"] if x["unit"] == "ER")
+        self.assertEqual((row["value"], row["approved"]), (5.0, False))
+        self.assertEqual(self.call("/api/policies", {"unit": "ER", "value": 5}, "clinician")[0], 403)
+        self.assertEqual(self.call("/api/policies", {"unit": "ER", "approve": True}, "manager")[0], 200)
+        row = next(x for x in self.call("/api/policies", who="viewer")[1]["nurse_ratio"] if x["unit"] == "ER")
+        self.assertEqual((row["value"], row["approved"]), (5.0, True))
         self.assertEqual(self.call("/api/policies", {"unit": "ICU", "value": 3, "role": "Operations Manager"}, "analyst")[0], 403)
         self.assertEqual(self.call("/api/rollback", {"role": "Operations Manager"}, "viewer")[0], 403)
         self.assertEqual(self.call("/api/run", STRESS, "viewer")[0], 403)
@@ -200,6 +220,7 @@ class Api(unittest.TestCase):
         self.assertIn("policy-missing", ids())
         for u in ("ER", "ICU", "WARD"):
             self.call("/api/policies", {"unit": u, "value": 6}, "manager")
+        self.call("/api/policies", {"unit": "ER", "approve": True}, "manager")
         self.assertNotIn("policy-missing", ids())
 
     # ── decision rules from the review ──
@@ -310,7 +331,8 @@ class Api(unittest.TestCase):
         self.assertIn("NOT an approved", pol[0]["source"])
         self.assertIn("manager", pol[0]["source"])
         self.call("/api/policies", {"unit": "ICU", "value": None}, "manager")
-        self.assertEqual(self.call("/api/policies", who="viewer")[1]["nurse_ratio"], [])
+        rows = self.call("/api/policies", who="viewer")[1]["nurse_ratio"]
+        self.assertEqual([(r["unit"], r["value"], r["approved"]) for r in rows], [("ER", None, False)])
 
 
 if __name__ == "__main__":

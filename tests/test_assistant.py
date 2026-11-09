@@ -125,8 +125,26 @@ class AssistantTests(unittest.TestCase):
             with env, patch:
                 out = self.ask("How is the ICU?")
             self.assertEqual((out["mode"], out["notes"]), ("llm_fallback", ["llm_unsupported"]))
+            self.assertTrue(out["validation_failures"])
+            self.assertTrue(out.get("fallback") == "template")
             pools = self.app.twin.pools(self.app.parse_as_of(AS_OF))
             self.assertIn(f"ICU: {pools['ICU:beds'].committed} of {pools['ICU:beds'].total}", out["answer"])
+        events = self.app.audit_tail(20)
+        failures = [e for e in events if e["action"] == "llm.unsupported"]
+        self.assertTrue(failures)
+        self.assertIn("reason", failures[0]["detail"])
+        self.assertIn("claim", failures[0]["detail"])
+
+    def test_detailed_validator_identifies_each_failed_claim_and_reason(self):
+        from hospital_agents.explain import validate_structured_detailed
+        accepted, failures = validate_structured_detailed(
+            [{"text": "ICU is safe.", "evidence": ["E1"]}, {"text": "ICU has 999 beds.", "evidence": ["E1"]}],
+            {"E1": "ICU has 10 beds."})
+        self.assertIsNone(accepted)
+        self.assertEqual(len(failures), 2)
+        self.assertEqual(failures[0]["claim"], "ICU is safe.")
+        self.assertIn("assurance", failures[0]["reason"])
+        self.assertIn("number", failures[1]["reason"])
 
     def test_provider_errors_fall_back_and_name_the_category(self):
         async def broken(system, user):

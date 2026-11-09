@@ -75,6 +75,14 @@ Every row is one separate pytest process. Durations are wall time and include pr
 - Same-as-of comparison command output (`python` calling `App.simulate`), `as_of=2026-10-17T08:00:00`: multiplier **1.3** → ICU shortfall **1**, **5 accepted actions**, **0 beds moved**, **0 reschedules**; multiplier **12** → shortfall **101**, **5 accepted actions**, **0 beds moved**, **0 reschedules**. The actions are clinic appointment changes; no ICU bed transfer or surgery move passed constraints. This is a 100-bed shortfall difference.
 - Queue/wait estimate remains unavailable: the pack has daily aggregate arrivals and observed waits, but no ER service-completion rate or service-time distribution, number of parallel staffed service stations, or arrival/service observations at a matching hourly grain. Erlang-C utilization and waiting time therefore cannot be calibrated; daily average wait is not sufficient to infer those inputs.
 
+## Phase 5 — policies, roles, LLM/RAG — done
+
+- Added `policies/templates/er-nurse-ratio.md` with an empty `value` and `approved: false`. Manager entry saves an unapproved draft; only the explicit Approve action makes it available to hard constraints. No ratio value is supplied by the product.
+- Added the `clinician` role: read/run permissions allow preview and scenario draft creation, while `decide` and `policy` remain operations-manager-only. Scenario drafts persist under `runtime/scenario_drafts.json` and are auditable.
+- Detailed LLM validation returns each failed claim and reason, records `llm.unsupported` to audit, and uses deterministic template text on rejection. Mock failure-path coverage exercises assurance language, unsupported numbers, missing citations, malformed output, and the fallback.
+- RAG evaluation uses 10 English and 10 Arabic questions at top-3: English **10/10 (100%)**, Arabic **0/10 (0%)**, overall **10/20 (50%)**. `docs/RAG_EVAL.md` and `docs/rag_eval_results.json` record the source-ID hit definition and result. Arabic retrieval is not supported by the current English-only corpus.
+- Phase 5 verification: `test_auth.py` **6 passed**, `test_app.py` **25 passed** (rerun after correcting the ER-template expectation), `test_assistant.py` **14 passed**, `test_policies.py` **10 passed**, new role/policy tests **2 passed**, RAG eval **1 passed**, frontend **3 passed / 1 skipped**. `node --check` and Python compile checks passed.
+
 ## Remaining verification limits
 
 - Python 3.12 behavior is unverified.

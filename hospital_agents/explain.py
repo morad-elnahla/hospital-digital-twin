@@ -158,19 +158,46 @@ def parse_structured(text: str) -> list[dict] | None:
 
 def validate_structured(items: list[dict], evidence: Mapping[str, str], max_sentences: int = 4) -> list[str] | None:
     """The accepted sentences, or None if any sentence is unsupported, uncited or the shape is wrong."""
-    if not items or len(items) > max_sentences:
-        return None
-    out = []
-    for it in items:
-        if not isinstance(it, dict) or not isinstance(it.get("text"), str) or not isinstance(it.get("evidence"), list):
-            return None
-        ids = it["evidence"]
-        if not ids or any(i not in evidence for i in ids) or len(it["text"]) > 400:
-            return None
-        if claim_problem(it["text"], " ".join(evidence[i] for i in ids)):
-            return None
-        out.append(it["text"].strip())
-    return out
+    accepted, failures = validate_structured_detailed(items, evidence, max_sentences)
+    return accepted if not failures else None
+
+
+def validate_structured_detailed(items: list[dict] | None, evidence: Mapping[str, str],
+                                 max_sentences: int = 4, raw_response: str = "") -> tuple[list[str] | None, list[dict]]:
+    """Return supported claims plus specific failed claims and reasons for safe audit/fallback."""
+    if not isinstance(items, list):
+        return None, [{"claim": raw_response[:240] or None, "reason": "response is not valid JSON with a sentences array", "evidence": []}]
+    if not items:
+        return None, [{"claim": None, "reason": "response contains no claims", "evidence": []}]
+    if len(items) > max_sentences:
+        return None, [{"claim": str(it.get("text", ""))[:240] if isinstance(it, dict) else str(it)[:240],
+                       "reason": f"claim count exceeds the limit of {max_sentences}", "evidence": []}
+                      for it in items[max_sentences:]]
+    out, failures = [], []
+    for index, item in enumerate(items):
+        claim = item.get("text") if isinstance(item, dict) else None
+        claim_text = claim.strip() if isinstance(claim, str) else ""
+        evidence_ids = item.get("evidence") if isinstance(item, dict) else None
+        if not claim_text or not isinstance(evidence_ids, list):
+            failures.append({"index": index, "claim": claim_text[:240] or None,
+                             "reason": "claim must include non-empty text and an evidence-id list", "evidence": []})
+            continue
+        unknown = [eid for eid in evidence_ids if not isinstance(eid, str) or eid not in evidence]
+        if not evidence_ids or unknown:
+            failures.append({"index": index, "claim": claim_text[:240],
+                             "reason": "claim has no citation" if not evidence_ids else "claim cites unknown evidence id(s)",
+                             "evidence": [str(eid) for eid in evidence_ids[:6]]})
+            continue
+        if len(claim_text) > 400:
+            failures.append({"index": index, "claim": claim_text[:240], "reason": "claim exceeds the 400-character limit",
+                             "evidence": evidence_ids[:6]})
+            continue
+        problem = claim_problem(claim_text, " ".join(evidence[eid] for eid in evidence_ids))
+        if problem:
+            failures.append({"index": index, "claim": claim_text[:240], "reason": problem, "evidence": evidence_ids[:6]})
+        else:
+            out.append(claim_text)
+    return (out if not failures else None), failures
 
 
 class LLMExplainer:

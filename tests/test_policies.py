@@ -49,6 +49,12 @@ class Store(unittest.TestCase):
         self.assertIn("nurse-ratio-icu", v.source)
         self.assertIsNone(b.get("nurse.max_patients_per_nurse:WARD"))   # only requested units
 
+    def test_unapproved_policy_draft_is_never_used_as_a_constraint(self):
+        (self.p / "nurse-ratio-icu.md").unlink()
+        self.write("draft.md", "---\nid: draft\nsource: manager draft\nkey: nurse.max_patients_per_nurse\nunit: ICU\nvalue: 3\napproved: false\n---\nDraft only.")
+        retriever = FolderPolicyRetriever(self.p)
+        self.assertIsNone(run(retriever.values(["ICU"], NOW)).get("nurse.max_patients_per_nurse:ICU"))
+
     def test_policies_from_rag_drive_the_same_decision(self):
         d = decide(self.p)
         agents = {p.agent for p in d.accepted}
