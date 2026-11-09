@@ -1,9 +1,10 @@
 table: forecast_evaluation
 data_version: csv-snapshot-2026-11-09
-source: data/forecast_evaluation.csv
+source: runtime/hdt.sqlite (derived by db/evaluate_forecasts.py from daily_metrics and nurse_coverage_shift_detail)
 primary_key: [run_group, target, horizon_days, model_name]
 relations:
   - none declared
 kpi_mappings:
-  - none directly consumed as a KPI
+  - target/horizon_days/model_name -> rolling-origin forecast error (MAE, WAPE, bias, skill_vs_naive)
+  - forecast_evaluation rows are generated evidence; forecast_results and prior forecast_evaluation CSV are not training inputs
 columns: [run_group, target, horizon_days, model_name, n, mae, wape, mape_floor, mape_floor_value, bias, pinball_loss, coverage_80, capped_day_share, skill_vs_naive]

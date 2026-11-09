@@ -99,7 +99,9 @@ def build_card(decision_id: str, inputs: SharedInputs, settings: Settings,
     if accepted and fc is not None and verified:
         confidence = round(fc * verified / len(accepted), 2)
 
-    assumptions = [Msg("as.forecast", model=inputs.forecast.model_version, stat=settings.forecast_stat),
+    has_forecast_bound = any(p.hi is not None for points in inputs.forecast.series.values() for p in points)
+    forecast_stat = settings.forecast_stat if has_forecast_bound else "point (no calibrated interval)"
+    assumptions = [Msg("as.forecast", model=inputs.forecast.model_version, stat=forecast_stat),
                    Msg("as.twin", version=inputs.twin.version)]
     assumptions += [Msg("as.target", kind=k, value=v) for k, v in sorted(settings.target_utilization.items())]
     if any(p.agent == "or" for p in accepted):

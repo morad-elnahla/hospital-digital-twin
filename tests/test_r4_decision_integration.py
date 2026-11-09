@@ -20,7 +20,7 @@ class DecisionR4Integration(unittest.TestCase):
             before = {path.name: (path.stat().st_size, path.stat().st_mtime_ns) for path in data_files}
             req = {'as_of': '2026-10-15T10:00', 'unit': 'ICU', 'multiplier': 12, 'language': 'ar'}
             preview = app.simulate(req)
-            self.assertGreater(preview['rescheduled_bookings'], 0)  # rostered-clinic moves are separate from unverified OR moves
+            self.assertEqual(preview['rescheduled_bookings'], 0)  # clinic shifts do not count as postponed surgeries; ICU model failed validation
             self.assertEqual(len(app.decisions()), 0)
             d = app.run(req, p)
             self.assertEqual(d['status'], 'PENDING')

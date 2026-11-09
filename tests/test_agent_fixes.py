@@ -64,7 +64,8 @@ class OperatingRoomCalendar(unittest.TestCase):
                         Principal("m", "operations_manager"))
         moved = [a for p in d["accepted"] if p["agent"] == "or" for a in p["actions"] if "booking_id" in a]
         self.assertFalse(moved)  # room capacity is known, but the source has no case provider/team IDs
-        self.assertTrue(any("UNVERIFIABLE" in reason for r in d["rejected"] for reason in r["reasons"]))
+        self.assertTrue(any("rolling-origin validation is missing" in note for r in d["reports"]
+                            if r["agent"] == "or" for note in r["notes"]))
 
     def test_arbitration_independently_refuses_a_slot_beyond_the_calendar(self):
         # Defence in depth: even if an agent (or a different adapter) listed the empty future as a slot, it is refused.
@@ -78,21 +79,11 @@ class OperatingRoomCalendar(unittest.TestCase):
         self.assertFalse(res.accepted)
         self.assertIn("outside the known calendar", res.rejected[0].reasons[0])
 
-    def test_or_candidate_keeps_the_same_specialty_and_calendar_capacity_is_known(self):
-        # A proposal can identify a free same-specialty slot; arbitration still requires case team identity.
+    def test_or_agent_abstains_when_icu_model_does_not_beat_the_baseline(self):
         snap_inputs = self.td.inputs(T0, __import__("hospital_agents.twin_data", fromlist=["Scenario"]).Scenario("ICU", 12))
         rep = run(ORAgent().propose(snap_inputs, Settings()))
-        self.assertTrue(rep.proposals)
-        twin = snap_inputs.twin
-        horizon = snap_inputs.forecast.horizon_end
-        for p in rep.proposals:
-            a = p.actions[0]
-            self.assertEqual(a.from_slot.resource_id, a.to_slot.resource_id)          # same room: specialty/equipment unchanged
-            self.assertGreater(a.to_slot.start, horizon)                              # really outside the stressed week
-            self.assertLess(a.to_slot.start, twin.calendar_end)                       # inside what the data knows
-            b, dst = twin.booking(a.booking_id), twin.slot(a.to_slot)
-            self.assertGreaterEqual(dst.free, b.duration)                             # fits the free minutes
-            self.assertEqual(dst.specialty, b.specialty)
+        self.assertFalse(rep.proposals)
+        self.assertTrue(any("passed rolling-origin validation is missing" in note for note in rep.notes))
 
     def test_two_moves_into_one_day_never_exceed_its_free_minutes(self):
         cap = 600
@@ -126,16 +117,18 @@ class ImpactAccounting(unittest.TestCase):
         moved = [p for p in d.accepted if p.agent == "or"]
         self.assertFalse(moved)  # no provider/team IDs exist in the source booking rows
         card = d.card
-        self.assertGreater(card.unmet["ICU:beds"], 0)  # R4 forecast baseline is data-derived
+        self.assertNotIn("ICU:beds", card.unmet)  # ICU model did not beat the baseline
         self.assertEqual(card.assumed_relief, {})
         self.assertEqual(card.unmet_if_assumed, {})
-        self.assertTrue(any("UNVERIFIABLE" in r for rejected in d.rejected for r in rejected.reasons))
+        self.assertTrue(any("rolling-origin validation is missing" in note for report in d.reports
+                            if report.agent == "or" for note in report.notes))
         self.assertEqual(card.capacity_added, {})
 
     def test_the_card_labels_the_assumption_and_the_unsimulated_impact(self):
         d = self._decide()
         self.assertFalse(any(p.agent == "or" for p in d.accepted))
-        self.assertTrue(any("UNVERIFIABLE" in r for rejected in d.rejected for r in rejected.reasons))
+        self.assertTrue(any("rolling-origin validation is missing" in note for report in d.reports
+                            if report.agent == "or" for note in report.notes))
 
     def test_explanation_never_presents_the_assumption_as_a_result(self):
         d = self._decide()
@@ -237,9 +230,10 @@ class EmptyDecisions(unittest.TestCase):
         d = self.app.run({"as_of": "2026-10-20T08:00", "unit": "ICU", "multiplier": 12, "language": "en"}, self.mgr)
         self.assertEqual(d["status"], "NO_ACTION")
         self.assertEqual(d["accepted"], [])
-        self.assertTrue(any("UNVERIFIABLE" in reason for r in d["rejected"] for reason in r["reasons"]))
+        self.assertTrue(any("rolling-origin validation is missing" in note for r in d["reports"]
+                            if r["agent"] == "or" for note in r["notes"]))
         self.assertFalse(any(p["agent"] == "bed" for p in d["accepted"]))
-        self.assertGreater(d["card"]["unmet"]["ICU:beds"], 0)
+        self.assertNotIn("ICU:beds", d["card"]["unmet"])
         self.assertEqual(self.app.health()["pending"], 0)
         self.assertEqual(self.app.decisions()[0]["status"], "NO_ACTION")
 
@@ -247,9 +241,9 @@ class EmptyDecisions(unittest.TestCase):
         d = self.app.run({"as_of": "2026-10-20T08:00", "unit": "ICU", "multiplier": 12, "language": "ar"}, self.mgr)
         self.assertEqual(d["status"], "NO_ACTION")
         self.assertEqual(d["accepted"], [])
-        self.assertTrue(any("غير قابل للتحقق" in reason for r in d["rejected"] for reason in r["reasons"]))
+        self.assertTrue(any("غير متوفر" in note for r in d["reports"] if r["agent"] == "or" for note in r["notes"]))
         self.assertRegex(d["card"]["summary"], r"[\u0600-\u06FF]")
-        self.assertGreater(d["card"]["unmet"]["ICU:beds"], 0)
+        self.assertNotIn("ICU:beds", d["card"]["unmet"])
 
     def test_a_decision_with_a_real_action_is_still_pending(self):
         for u in ("ICU", "WARD"):
@@ -283,10 +277,7 @@ class ReadableReasons(unittest.TestCase):
         self.assertTrue(texts)
         for t in texts:
             self.assertRegex(t, arabic, t)
-            self.assertNotIn("exceeds", t)
         for r_ar, r_en in zip(ar["rejected"], en["rejected"]):
-            self.assertIn("UNVERIFIABLE", r_en["reasons"][0])
-            self.assertIn("غير قابل للتحقق", r_ar["reasons"][0])
             self.assertEqual(r_ar["reason_codes"], r_en["reason_codes"])   # same decision, same facts
 
     def test_both_languages_carry_the_same_numbers(self):

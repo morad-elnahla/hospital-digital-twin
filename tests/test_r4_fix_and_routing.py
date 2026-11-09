@@ -38,8 +38,8 @@ class VerifiedCalendarRegression(unittest.TestCase):
             preview = app.simulate({'as_of': AS_OF.isoformat(), 'unit': 'ICU', 'multiplier': 1.3})
             self.assertEqual(preview['rescheduled_bookings'], 0)
             self.assertFalse(any(p['agent'] == 'or' for p in preview['decision']['accepted']))
-            self.assertTrue(any('UNVERIFIABLE' in reason for item in preview['decision']['rejected']
-                                if item['proposal']['agent'] == 'or' for reason in item['reasons']))
+            self.assertTrue(any('rolling-origin validation is missing' in note for item in preview['decision']['reports']
+                                if item['agent'] == 'or' for note in item['notes']))
             d = app.run({'as_of': AS_OF.isoformat(), 'unit': 'ICU', 'multiplier': 1.3},
                         Principal('test', 'operations_manager'))
             dates = [a['to_slot']['start'][:10] for p in d['accepted'] if p['agent'] == 'or'

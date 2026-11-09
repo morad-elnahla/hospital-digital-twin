@@ -47,6 +47,12 @@ class ResourceAgent(Agent):
         if not settings.resource_kinds:
             return AgentReport(self.name, notes=(Msg("reb.abstain_resource"),))
         reports = [rebalance.plan(self.name, inputs, settings, k) for k in settings.resource_kinds]
+        # The source pack has only an aggregate resource-utilisation index, not
+        # resource-specific demand series that can pass rolling-origin validation.
+        if not any(any(key.split(":")[1] == kind and key.endswith(":demand")
+                        for key in inputs.forecast.series) for kind in settings.resource_kinds):
+            return AgentReport(self.name, findings=tuple(f for r in reports for f in r.findings),
+                               notes=tuple(n for r in reports for n in r.notes) + (Msg("reb.abstain_resource"),))
         return AgentReport(self.name,
                            tuple(p for r in reports for p in r.proposals),
                            tuple(f for r in reports for f in r.findings),

@@ -102,7 +102,7 @@ class TwinSnapshot:
 class ForecastPoint:
     ts: datetime
     value: float
-    lo: float | None = None
+    lo: float | None = None          # only populated when an interval has measured calibration
     hi: float | None = None
 
 

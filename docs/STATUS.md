@@ -31,26 +31,37 @@ Every row is one separate pytest process. Durations are wall time and include pr
 
 | File | Result | Time |
 | --- | --- | ---: |
-| `test_agent_fixes.py` | 24 passed | 70.25s |
-| `test_agents.py` | 24 passed | 5.35s |
+| `test_agent_fixes.py` | 24 passed | 142.93s |
+| `test_agents.py` | 24 passed | 2.35s |
 | `test_agents_page.py` | 4 passed | 4.96s |
-| `test_app.py` | 22 passed | 170.62s |
-| `test_assistant.py` | 13 passed | 20.87s |
+| `test_app.py` | 22 passed | 156.15s |
+| `test_assistant.py` | 13 passed | 24.78s |
 | `test_auth.py` | 6 passed | 8.04s |
 | `test_browser.py` | 7 skipped (Playwright/Chromium unavailable) | 4.49s |
 | `test_corpus.py` | 8 passed | 5.18s |
-| `test_data_pack.py` | 16 passed | 26.63s |
+| `test_data_pack.py` | 16 passed | 47.98s |
 | `test_frontend.py` | 3 passed, 1 skipped (legacy DOM harness) | 6.46s |
-| `test_insights.py` | 12 passed | 17.30s |
+| `test_insights.py` | 12 passed | 24.22s |
 | `test_llm.py` | 19 passed | 21.34s |
 | `test_no_action_display.py` | 3 passed | 3.65s |
-| `test_nurse_gate_and_plurals.py` | 17 passed, 4 subtests passed | 15.14s |
+| `test_nurse_gate_and_plurals.py` | 17 passed, 4 subtests passed | 22.80s |
 | `test_phase2_replay.py` | 5 passed | 17.02s |
 | `test_policies.py` | 9 passed | 3.96s |
-| `test_r4_decision_integration.py` | 1 passed | 14.01s |
-| `test_r4_fix_and_routing.py` | 4 passed (rerun; first attempt exceeded 180s) | 200.39s |
+| `test_r4_decision_integration.py` | 1 passed | 15.25s |
+| `test_r4_fix_and_routing.py` | 4 passed | 160.63s |
 | `test_schema_drift.py` | 3 passed | 3.51s |
 | `test_store.py` | 6 passed | 5.54s |
+| `test_phase3_forecast.py` | 4 passed | 14.30s |
+
+## Phase 3 — forecast — done
+
+- Added a replay-safe, explainable weekday + linear-trend + annual/semi-annual seasonal regression. It trains only on complete observations before `as_of`; dashboards use the selected candidate or the weekday-mean fallback. Existing `forecast_results*` tables are not training inputs.
+- Runs a 90-origin rolling backtest with 1–7 day leads. The trend-seasonal model is eligible for agent use only when both aggregate MAE and WAPE beat the naive same-weekday baseline. `db/evaluate_forecasts.py` replaces the old unverified evaluation rows with 144 baseline/model scores in `forecast_evaluation`, including aggregate (horizon 0) and each lead; `make build-db` regenerates them.
+- Rebuild sequence verified: 42 tables / 678,013 rows, 0 FK violations, `integrity_check=ok`; evaluation wrote 144 rows; regenerated report is 7 pass / 2 warn / 0 unresolved.
+- At the latest data date (2026-10-21 evaluation origin), 4/9 targets pass: ER arrivals, ER bed demand, ER wait, OR utilization. ER/ICU/WARD nurse demand, ICU bed demand, and ward bed demand fail or tie, so the corresponding agents abstain with a visible validation reason. No doctor-specific or resource-specific demand series exists; those agents abstain.
+- Aggregate MAE/WAPE (weekday mean -> trend-seasonal): ER arrivals **9.1597 / 0.1297 -> 8.6706 / 0.1228**; ER beds **2.4888 / 0.3063 -> 2.4624 / 0.3030**; ER wait **23.8123 / 0.5149 -> 23.5795 / 0.5099**; OR utilization **14.8800 / 0.2290 -> 14.6900 / 0.2260**. ICU beds worsened (**1.7832 / 0.2119 -> 2.0712 / 0.2461**); Ward beds slightly worsened (**3.7728 / 0.1324 -> 3.7872 / 0.1329**).
+- Forecasts expose the training source, selected model, rolling scores and abstention reason. Lower/upper interval values are null because calibration coverage has not been measured; no ± standard-deviation interval is shown. The 7-day ICU point peak changes across a 16-month origin span (0.7548 on 2025-06-23; 0.7829 on 2026-10-17). Its trend-seasonal candidate fails the backtest at the latest origin, so the displayed point is the weekday baseline and it is not sent to agents.
+- Verification: `test_phase3_forecast.py` **4 passed**, `test_insights.py` **12 passed**, `test_data_pack.py` **16 passed**, `test_agents.py` **24 passed**, `test_agent_fixes.py` **24 passed**, `test_assistant.py` **13 passed**, `test_app.py` **22 passed**, `test_nurse_gate_and_plurals.py` **17 passed + 4 subtests**, `test_r4_decision_integration.py` **1 passed**, and `test_r4_fix_and_routing.py` **4 passed**. Each file ran in its own process.
 
 ## Remaining verification limits
 

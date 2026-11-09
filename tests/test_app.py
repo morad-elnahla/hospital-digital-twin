@@ -100,7 +100,8 @@ class Api(unittest.TestCase):
         self.assertEqual((d["status"], d["stale"]), ("PENDING", False))
         self.assertTrue(d["accepted"])
         self.assertTrue(all(p["agent"] == "appointment" for p in d["accepted"]))  # OR team IDs are absent, so moves fail closed
-        self.assertTrue(any("UNVERIFIABLE" in reason for r in d["rejected"] for reason in r["reasons"]))
+        self.assertTrue(any("rolling-origin validation is missing" in note for r in d["reports"]
+                            if r["agent"] == "or" for note in r["notes"]))
         s, a = self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")
         self.assertEqual((s, a["status"], a["decided_by"]), (200, "APPLIED", "manager (Operations Manager)"))
         self.assertEqual(self.call(f"/api/decisions/{d['id']}/approve", {}, "manager")[0], 409)

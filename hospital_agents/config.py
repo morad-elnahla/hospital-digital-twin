@@ -11,7 +11,7 @@ from typing import Any, Mapping
 @dataclass(frozen=True)
 class Settings:
     agent_timeout_s: float = 10.0
-    # "upper" plans against the forecast's upper bound (safer); "point" against the point value.
+    # Prefer a supplied upper bound; forecasts without calibrated bounds fall back to the point value.
     forecast_stat: str = "upper"
     # Target utilisation per pool kind (demand / capacity). 1.0 = no buffer, the neutral value.
     target_utilization: Mapping[str, float] = field(default_factory=dict)

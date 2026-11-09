@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from .messages import plural
+from . import forecasting
 from .twin_data import STAFF_ROLES, TwinData, _dt
 
 HISTORY_DAYS = 14
@@ -36,33 +37,27 @@ def _period(days: list[str]) -> dict:
 FORECASTS = {
     "er_arrivals": ("ER", "arrivals_count", 1, "patients/day", "ER arrivals"),
     "er_wait": ("ER", "avg_wait_minutes", 1, "minutes", "ER average wait"),
+    "er_occ": ("ER", "occupancy_rate", 100, "% of beds", "ER occupancy"),
     "icu_occ": ("ICU", "occupancy_rate", 100, "% of beds", "ICU occupancy"),
     "ward_occ": ("WARD", "occupancy_rate", 100, "% of beds", "Ward occupancy"),
     "or_util": ("OR", "or_utilization_rate", 100, "% of room time", "OR utilisation"),
 }
 
 
+def _forecast_key(dep_type: str, column: str) -> str:
+    return {("ER", "arrivals_count"): "er_arrivals", ("ER", "avg_wait_minutes"): "er_wait",
+            ("ER", "occupancy_rate"): "ER:occupancy", ("ICU", "occupancy_rate"): "ICU:occupancy",
+            ("WARD", "occupancy_rate"): "WARD:occupancy", ("OR", "or_utilization_rate"): "or_util"}[(dep_type, column)]
+
+
 def weekday_forecast(td: TwinData, as_of: datetime, dep_type: str, column: str, scale: float, days: int = 7) -> list[dict]:
-    """Weekday-mean baseline (the pack's own method) from history strictly before the replay day,
-    plus the actual value when the data contains it. Band = mean +/- 1 sample std (descriptive)."""
+    """Selected replay-safe forecast, with retrospective actuals and no uncalibrated interval."""
     dep = td.dept_by_type[dep_type]
-    by_wd = defaultdict(list)
-    for day, rows in td.metrics.items():
-        v = _num(rows[dep][column])
-        if day < as_of.date().isoformat() and v is not None:
-            by_wd[_dt(day).weekday()].append(v * scale)
-    out = []
-    for i in range(0, days):
-        d = as_of.date() + timedelta(days=i)
-        vals = by_wd.get(d.weekday(), [])
-        if not vals:
-            continue
-        mean = statistics.fmean(vals)
-        std = statistics.stdev(vals) if len(vals) > 1 else 0.0
-        actual = _num(td.metrics.get(d.isoformat(), {}).get(dep, {}).get(column))
-        out.append({"date": d.isoformat(), "predicted": round(mean, 3), "lower": round(max(0.0, mean - std), 3),
-                    "upper": round(mean + std, 3), "actual": None if actual is None else round(actual * scale, 3)})
-    return out
+    item = forecasting.build(td, as_of).get(_forecast_key(dep_type, column), {})
+    return [{"date": p["date"], "predicted": round(p["predicted"] * scale, 3),
+             "lower": None, "upper": None,
+             "actual": None if p["actual"] is None else round(p["actual"] * scale, 3)}
+            for p in item.get("points", ())[:days]]
 
 
 def _backtest(points: list[dict]) -> dict:
@@ -74,62 +69,65 @@ def _backtest(points: list[dict]) -> dict:
             "mape": round(statistics.fmean(abs(p["predicted"] - p["actual"]) / p["actual"] for p in nz), 3) if nz else None}
 
 
-BACKTEST_DAYS, BACKTEST_HORIZON = 28, 3
-
-
 def rolling_backtest(td: TwinData, as_of: datetime, dep_type: str, column: str, scale: float) -> dict:
-    """Fair comparison over many forecast origins: for each of the 28 days before the replay moment, forecast
-    1-3 days ahead using only earlier data, and score against what happened (only days before the replay moment).
-    Methods: weekday mean (what the dashboard uses), seasonal naive (same weekday last week), persistence (yesterday)."""
-    dep = td.dept_by_type[dep_type]
-    val = {d: v * scale for d, rows in td.metrics.items() if (v := _num(rows[dep][column])) is not None}
-    stop = as_of.date()
-    methods = {"weekday_mean": [], "seasonal_naive": [], "persistence": []}
-    for k in range(BACKTEST_DAYS, 0, -1):
-        origin = stop - timedelta(days=k)
-        hist = {d: v for d, v in val.items() if d < origin.isoformat()}
-        if len(hist) < 14:
-            continue
-        by_wd = defaultdict(list)
-        for d, v in hist.items():
-            by_wd[_dt(d).weekday()].append(v)
-        last = hist.get((origin - timedelta(days=1)).isoformat())
-        for h in range(BACKTEST_HORIZON):
-            day = origin + timedelta(days=h)
-            actual = val.get(day.isoformat())
-            if actual is None or day >= stop or not by_wd.get(day.weekday()):
-                continue
-            methods["weekday_mean"].append((statistics.fmean(by_wd[day.weekday()]), actual))
-            if (past := hist.get((day - timedelta(days=7)).isoformat())) is not None:
-                methods["seasonal_naive"].append((past, actual))
-            if last is not None:
-                methods["persistence"].append((last, actual))
-    out = {}
-    for name, pairs in methods.items():
-        total = sum(abs(a) for _, a in pairs)
-        out[name] = {"n": len(pairs), "mae": round(statistics.fmean(abs(f - a) for f, a in pairs), 3) if pairs else None,
-                     "wape": round(sum(abs(f - a) for f, a in pairs) / total, 3) if total else None,
-                     "mean_actual": round(statistics.fmean(a for _, a in pairs), 3) if pairs else None}
-    ref = out["seasonal_naive"]["mae"]
-    for name, m in out.items():
-        m["skill_vs_seasonal_naive"] = round(1 - m["mae"] / ref, 3) if m["mae"] is not None and ref else None
-    best = min((n for n in out if out[n]["mae"] is not None), key=lambda n: out[n]["mae"], default=None)
-    return {"window": {"from": (stop - timedelta(days=BACKTEST_DAYS)).isoformat(), "to": (stop - timedelta(days=1)).isoformat()},
-            "horizon_days": BACKTEST_HORIZON, "methods": out, "best_by_mae": best}
+    """Rolling-origin model-vs-naive scores, using only targets before the replay day."""
+    item = forecasting.build(td, as_of).get(_forecast_key(dep_type, column), {})
+    rolling = item.get("rolling", {})
+    methods = {}
+    for name, raw in rolling.get("overall", {}).items():
+        methods[name] = {**raw,
+                         "mae": None if raw["mae"] is None else round(raw["mae"] * scale, 3),
+                         "bias": None if raw["bias"] is None else round(raw["bias"] * scale, 3),
+                         "mean_actual": None if raw["mean_actual"] is None else round(raw["mean_actual"] * scale, 3)}
+    return {"window": rolling.get("window", {"from": None, "to": None}), "horizon_days": 7,
+            "methods": methods,
+            "best_by_mae": min(methods,
+                               key=lambda name: methods[name]["mae"] if methods[name]["mae"] is not None else float("inf"), default=None),
+            "beats_baseline": item.get("beats_baseline", False)}
+
+
+def _rolling_summary(item: dict) -> dict:
+    rolling = item.get("rolling", {})
+    methods = rolling.get("overall", {})
+    best = min(methods, key=lambda name: methods[name]["mae"] if methods[name]["mae"] is not None else float("inf"), default=None)
+    return {"window": rolling.get("window", {"from": None, "to": None}), "horizon_days": 7,
+            "methods": methods, "best_by_mae": best, "beats_baseline": item.get("beats_baseline", False)}
 
 
 def forecasts(td: TwinData, as_of: datetime) -> dict:
     hist = _days(as_of, HISTORY_DAYS)
     out = []
+    selected = forecasting.build(td, as_of)
     for key, (dep_type, col, scale, unit, title) in FORECASTS.items():
         dep = td.dept_by_type[dep_type]
         points = weekday_forecast(td, as_of, dep_type, col, scale)
+        item = selected.get(_forecast_key(dep_type, col), {})
         out.append({
             "key": key, "title": title, "unit": unit, "table": "daily_metrics",
             "history": {"dates": hist, "values": [None if (v := _num(td.metrics.get(d, {}).get(dep, {}).get(col))) is None
                                                   else round(v * scale, 3) for d in hist]},
-            "forecast": points, "backtest": _backtest(points), "rolling": rolling_backtest(td, as_of, dep_type, col, scale)})
-    return {"as_of": as_of.isoformat(), "method": "weekday_mean_baseline", "calibrated": False, "series": out}
+            "forecast": points, "backtest": _backtest(points), "rolling": rolling_backtest(td, as_of, dep_type, col, scale),
+            "selected_model": item.get("selected_model"), "beats_baseline": item.get("beats_baseline", False),
+            "abstain_reason": item.get("abstain_reason")})
+    for unit in ("ER", "ICU", "WARD"):
+        key = f"{unit}:nurses"
+        item = selected.get(key, {})
+        out.append({"key": key.lower().replace(":", "_"), "title": f"{unit} nurses required per shift",
+                    "unit": "nurses", "table": "nurse_coverage_shift_detail",
+                    "history": {"dates": [p["date"] for p in item.get("history", ())],
+                                "values": [p["value"] for p in item.get("history", ())]},
+                    "forecast": item.get("points", []), "backtest": _backtest(item.get("points", [])),
+                    "rolling": _rolling_summary(item), "selected_model": item.get("selected_model"),
+                    "beats_baseline": item.get("beats_baseline", False), "abstain_reason": item.get("abstain_reason")})
+    return {"as_of": as_of.isoformat(), "method": "weekday_trend_seasonal_selected_or_weekday_mean", "calibrated": False,
+            "intervals": "unavailable; no calibrated coverage evidence", "series": out,
+            "evidence": {
+                "confirmed_computation": {"source": "runtime/hdt.sqlite forecast_evaluation",
+                                          "method": "90-day rolling-origin; leads 1-7; MAE and WAPE against weekday mean"},
+                "model_estimate": {"source": "daily_metrics and nurse_coverage_shift_detail strictly before as_of",
+                                   "method": "weekday effects + linear trend + annual/semi-annual seasonal terms, or weekday mean fallback"},
+                "assumption": ["nurse demand is the maximum sourced required_nurses value across shifts for each unit-day"],
+                "unavailable": ["calibrated prediction intervals", "doctor-specific demand series", "resource-specific demand series"]}}
 
 
 # ───────────────────────── capacity: ER / ICU / ward ─────────────────────────
@@ -155,7 +153,8 @@ def capacity(td: TwinData, as_of: datetime) -> dict:
             "beds_occupied_per_nurse": round(occupied / nurses.total, 2) if nurses and nurses.total else None,
             "occupancy_history_pct": _unit_history(td, unit, hist, "occupancy_rate", 100),
             "forecast_pct": series, "backtest": _backtest(series),
-            "peak_forecast_upper_pct": max((p["upper"] for p in series), default=None)}
+            "peak_forecast_upper_pct": max((p["upper"] if p["upper"] is not None else p["predicted"]
+                                             for p in series), default=None)}
     # ER flow comes from the visits table
     since = (as_of.date() - timedelta(days=28)).isoformat()
     until = as_of.date().isoformat()

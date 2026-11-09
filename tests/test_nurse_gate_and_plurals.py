@@ -119,10 +119,10 @@ class ReportedScenarioEndToEnd(unittest.TestCase):
         d = self.app.run({"as_of": "2026-10-19T08:00", "unit": "ICU", "multiplier": 12, "language": "en"}, MGR)
         moved = [a for p in d["accepted"] for a in p["actions"] if "pool" in a]
         self.assertEqual(moved, [])
-        self.assertEqual(d["status"], "PENDING")  # OR postponement remains possible without adding beds
+        self.assertEqual(d["status"], "PENDING")  # validated appointment moves can remain actionable
         self.assertFalse(any(p["agent"] == "or" for p in d["accepted"]))
-        self.assertTrue(any("UNVERIFIABLE" in reason for item in d["rejected"]
-                            if item["proposal"]["agent"] == "or" for reason in item["reasons"]))
+        self.assertTrue(any("rolling-origin validation is missing" in note for item in d["reports"]
+                            if item["agent"] == "or" for note in item["notes"]))
 
     def _stored_unsafe_decision(self):
         """A PENDING record whose accepted set the old gate would have let through."""

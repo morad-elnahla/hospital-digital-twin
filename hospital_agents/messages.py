@@ -79,8 +79,8 @@ CATALOG: dict[str, tuple[str, str]] = {
     "act.alert": ("alert: {detail}", "تنبيه: {detail}"),
     "act.line": ("{agent}: {actions}", "{agent}: {actions}"),
     # ───────── capacity rebalancing ─────────
-    "reb.no_forecast": ("{unit}:{kind}: no demand forecast; unit excluded as donor",
-                        "{unit}:{kind}: لا يوجد توقع للطلب؛ استُبعدت الوحدة كجهة مانحة"),
+    "reb.no_forecast": ("{unit}:{kind}: no demand forecast passed rolling-origin validation; unit excluded as donor",
+                        "{unit}:{kind}: لا يوجد توقع طلب اجتاز التحقق المتحرك؛ استُبعدت الوحدة كجهة مانحة"),
     "reb.no_headroom": ("{pool}: deficit {deficit} but no headroom or donor surplus",
                         "{pool}: يوجد عجز {deficit} لكن لا توجد سعة إضافية ولا فائض لدى وحدات مانحة"),
     "reb.need": ("{pool} forecast peak demand {demand:.1f} at target utilisation {target:g} requires {required}, current total {total}",
@@ -95,9 +95,11 @@ CATALOG: dict[str, tuple[str, str]] = {
                           "which does not allow more than the current {total}; the full move is proposed so the gate can reject it with the numbers",
                           "حد التمريض: {nurses} ممرض/ة في الوردية بنسبة {ratio:g} مريض لكل ممرض يدعمون {max_beds} سرير كحد أقصى في {unit} "
                           "ولا يسمح ذلك بأكثر من {total} الحالية؛ يُقترح النقل كاملًا ليرفضه الفحص مع الأرقام"),
-    "reb.abstain_resource": ("no resource_kinds configured; abstaining", "لم تُضبط أنواع موارد؛ امتنع الوكيل"),
+    "reb.abstain_resource": ("no resource-specific demand forecast passed rolling-origin validation; abstaining",
+                             "لا يوجد توقع طلب خاص بالموارد اجتاز التحقق المتحرك؛ امتنع الوكيل"),
     # ───────── OR / appointment ─────────
-    "or.pool_missing": ("{key}: pool or forecast missing; abstaining", "{key}: المجمّع أو التوقع غير متوفر؛ امتنع الوكيل"),
+    "or.pool_missing": ("{key}: pool or demand forecast that passed rolling-origin validation is missing; abstaining",
+                        "{key}: المجمّع أو توقع الطلب الذي اجتاز التحقق المتحرك غير متوفر؛ امتنع الوكيل"),
     "or.deficit": ("{key} forecast peak demand {demand:.1f} exceeds capacity {total} (deficit {deficit})",
                    "ذروة الطلب المتوقع لـ {key} هي {demand:.1f} وتتجاوز السعة {total} (العجز {deficit})"),
     "or.candidate": ("booking {booking} is non_urgent and flagged needs_icu_bed",

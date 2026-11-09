@@ -71,19 +71,24 @@ class Snapshot(unittest.TestCase):
 
     def test_no_future_leakage_in_forecast(self):
         as_of = datetime(2026, 8, 14, 8)
-        first = td.occupancy_forecast(as_of, "ICU")[0]
-        wd = datetime.fromisoformat(first["date"]).weekday()
-        history = [float(rows["DEP-ICU"]["occupancy_rate"]) for day, rows in td.metrics.items()
-                   if day < as_of.date().isoformat() and datetime.fromisoformat(day).weekday() == wd]
-        self.assertGreater(len(history), 1)
-        self.assertAlmostEqual(first["predicted"], sum(history) / len(history), places=9)
+        from hospital_agents.twin_data import TwinData
+        clean, changed = TwinData(DATA), TwinData(DATA)
+        before = clean.occupancy_forecast(as_of, "ICU")
+        for day, departments in changed.metrics.items():
+            if day >= as_of.date().isoformat() and "DEP-ICU" in departments:
+                departments["DEP-ICU"]["occupancy_rate"] = "999"
+        after = changed.occupancy_forecast(as_of, "ICU")
+        self.assertEqual([p["predicted"] for p in before], [p["predicted"] for p in after])
+        self.assertTrue(all(p["lower"] is None and p["upper"] is None for p in before))
 
-    def test_forecast_reproduces_the_pack_forecast_file(self):
-        pack = [r for r in td.t["forecast_results"] if r["target_metric"] == "bed_occupancy_rate"]
-        for unit, dep in (("ICU", "DEP-ICU"), ("WARD", "DEP-WARD")):
-            mine = {r["date"]: r["predicted"] for r in td.occupancy_forecast(datetime(2026, 10, 22, 8), unit)}
-            for r in (p for p in pack if p["department_id"] == dep):
-                self.assertAlmostEqual(mine[r["forecast_for"][:10]], float(r["predicted_value"]), delta=0.002)
+    def test_forecast_ignores_unverified_pack_predictions(self):
+        from hospital_agents.twin_data import TwinData
+        local = TwinData(DATA)
+        as_of = datetime(2026, 10, 17, 8)
+        before = local.occupancy_forecast(as_of, "ICU")
+        local.t["forecast_results"] = []
+        after = local.occupancy_forecast(as_of, "ICU")
+        self.assertEqual([p["predicted"] for p in before], [p["predicted"] for p in after])
 
     def test_overview_tiles_come_from_the_csvs(self):
         from hospital_agents import insights
@@ -104,15 +109,15 @@ class Agents(unittest.TestCase):
 
     def test_stress_without_policy_is_rejected_as_unverifiable(self):
         d = decide(Scenario("ICU", 12))
-        self.assertEqual(d.card.critical_bottleneck, "ICU:beds")
         self.assertFalse(any(p.agent == "bed" for p in d.accepted))
-        self.assertGreater(d.card.unmet["ICU:beds"], 0)  # no donor/capacity is invented
+        self.assertNotIn("ICU:beds", d.card.unmet)  # the ICU model did not beat the weekday baseline
+        self.assertTrue(any("rolling-origin validation" in note for report in d.reports for note in report.notes))
 
     def test_stress_with_policy_accepts_the_bed_move_and_reports_what_is_unmet(self):
         pol = PolicyBundle({f"nurse.max_patients_per_nurse:{u}": PolicyValue(40, "test") for u in ("ICU", "WARD")})
         d = decide(Scenario("ICU", 12), pol)
         self.assertFalse(any(p.agent == "bed" for p in d.accepted))
-        self.assertGreater(d.card.unmet["ICU:beds"], 0)  # source roster has no safe donor headroom
+        self.assertNotIn("ICU:beds", d.card.unmet)  # sourced policy cannot substitute for a validated forecast
 
     def test_surgery_move_is_unverifiable_without_a_provider_or_team_id(self):
         # The source has specialty/room roster counts but no case provider or team identifier.
@@ -121,7 +126,9 @@ class Agents(unittest.TestCase):
         moved = {a.booking_id for p in d.accepted if p.agent == "or" for a in p.actions if isinstance(a, Reschedule)}
         self.assertFalse(moved)
         self.assertFalse(moved & urgent)
-        self.assertTrue(any("UNVERIFIABLE" in reason for r in d.rejected if r.proposal.agent == "or" for reason in r.reasons))
+        self.assertFalse(any(p.agent == "or" for p in d.accepted))
+        self.assertTrue(any("rolling-origin validation is missing" in note for report in d.reports
+                            if report.agent == "or" for note in report.notes))
 
     def test_apply_then_rollback_restores_the_snapshot(self):
         pol = PolicyBundle({f"nurse.max_patients_per_nurse:{u}": PolicyValue(40, "test") for u in ("ICU", "WARD")})

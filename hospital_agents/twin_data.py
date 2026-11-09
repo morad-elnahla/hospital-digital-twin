@@ -6,8 +6,8 @@ stood then (beds occupied, staff on shift, future bookings) and the forecast is 
 from data *before* that moment, so the days after it can be used to check the forecast.
 
 Documented simplifications (all synthetic-data conveniences, none clinical):
-  * Bed demand forecast = weekday-mean occupancy rate x physical beds (the pack's own method);
-    the upper bound is mean + 1 sample std (descriptive, not a calibrated interval).
+  * Forecasts use only prior daily_metrics and nurse coverage; the trend-seasonal model is
+    selected only when rolling-origin MAE and WAPE both beat weekday mean. Intervals are unavailable.
   * Staff pools = non-absent shifts covering `as_of`, by role (NURSE, DOCTOR). Staff demand has
     no forecast in the pack, so the Staff agent abstains.
   * OR slot = one OR-day, capacity from the verified or_availability roster when present;
@@ -318,36 +318,34 @@ class TwinData:
     # ───────────────────────── forecast ─────────────────────────
 
     def occupancy_forecast(self, as_of: datetime, unit: str, days: int = FORECAST_DAYS) -> list[dict]:
-        """Weekday-mean occupancy from history strictly before `as_of`'s day, with actuals if known."""
-        dep = self.dept_by_type[unit]
-        by_wd = defaultdict(list)
-        for day, rows in self.metrics.items():
-            if _dt(day).date() < as_of.date() and rows[dep]["occupancy_rate"]:
-                by_wd[_dt(day).weekday()].append(float(rows[dep]["occupancy_rate"]))
-        out = []
-        for i in range(1, days + 1):
-            d = as_of.date() + timedelta(days=i)
-            vals = by_wd.get(d.weekday(), [])
-            if not vals:
-                continue
-            mean = statistics.fmean(vals)
-            std = statistics.stdev(vals) if len(vals) > 1 else 0.0
-            actual = self.metrics.get(d.isoformat(), {}).get(dep, {}).get("occupancy_rate")
-            out.append({"date": d.isoformat(), "predicted": mean, "lower": max(0.0, mean - std),
-                        "upper": min(1.0, mean + std), "actual": float(actual) if actual else None})
-        return out
+        """Occupancy forecast from history strictly before `as_of`; no uncalibrated interval."""
+        from .forecasting import build
+        points = build(self, as_of).get(f"{unit}:occupancy", {}).get("points", ())
+        return list(points[:days])
 
     def forecast(self, as_of: datetime, scenario: Scenario = Scenario()) -> Forecast:
+        from .forecasting import build
+        analyzed = build(self, as_of)
         series = {}
-        for unit in ("ICU", "WARD"):
+        for unit in ("ER", "ICU", "WARD"):
+            result = analyzed.get(f"{unit}:occupancy")
+            if not result or not result["beats_baseline"]:
+                continue
             k = scenario.demand_multiplier if unit == scenario.unit else 1.0
             n = self.beds_total[unit]
-            series[f"{unit}:beds:demand"] = tuple(
-                ForecastPoint(_dt(p["date"] + "T08:00:00"), p["predicted"] * n * k,
-                              p["lower"] * n * k, p["upper"] * n * k)
-                for p in self.occupancy_forecast(as_of, unit))
-        series = {m: pts for m, pts in series.items() if pts}
-        return Forecast("weekday_mean_baseline/replay", series, confidence=None)
+            points = tuple(ForecastPoint(_dt(p["date"] + "T08:00:00"), p["predicted"] * n * k)
+                           for p in result["points"])
+            if points:
+                series[f"{unit}:beds:demand"] = points
+        for unit in ("ER", "ICU", "WARD"):
+            result = analyzed.get(f"{unit}:nurses")
+            if not result or not result["beats_baseline"]:
+                continue
+            points = tuple(ForecastPoint(_dt(p["date"] + "T08:00:00"), p["predicted"])
+                           for p in result["points"])
+            if points:
+                series[f"{unit}:nurses:demand"] = points
+        return Forecast("rolling_origin_selected_v1", series, confidence=None)
 
     def backtest(self, as_of: datetime) -> dict:
         """WAPE/MAPE of the occupancy forecast on the days after `as_of` that exist in the data."""

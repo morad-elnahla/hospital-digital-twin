@@ -53,7 +53,7 @@ GLOSSARY = {
     "utilisation": ("OR utilisation is the share of operating-room time that was used on a day, as recorded in the daily metrics.", "استخدام غرف العمليات هو نسبة وقت الغرف المستخدم في اليوم كما تسجله المؤشرات اليومية."),
     "nurse": ("Occupied beds per nurse is an observed ratio at the chosen moment. It is not a policy limit; the limit comes from a nurse-ratio policy an Operations Manager enters.", "الأسرة المشغولة لكل ممرض نسبة مرصودة في اللحظة المختارة وليست حدًا تنظيميًا؛ الحد يأتي من سياسة نسبة التمريض التي يدخلها مدير التشغيل."),
     "replay": ("Replay moment: the dashboard rebuilds the hospital as it stood then and forecasts using only earlier data, so later days can check the forecast.", "لحظة إعادة التشغيل: تعيد اللوحة بناء المستشفى كما كان وقتها وتتوقع باستخدام بيانات أسبق فقط، فيمكن للأيام اللاحقة اختبار التوقع."),
-    "baseline": ("The forecasts are weekday-average baselines: the average of the same weekday in earlier weeks. They are not trained models and have no confidence score.", "التوقعات خطوط أساس بمتوسط يوم الأسبوع: متوسط نفس اليوم في الأسابيع السابقة. ليست نماذج مدرَّبة وليس لها درجة ثقة."),
+    "baseline": ("The forecast compares a weekday trend-seasonal model with a same-weekday historical average. It uses the trend-seasonal model only when rolling-origin MAE and WAPE both beat that baseline. No prediction interval is calibrated.", "يقارن التوقع نموذجًا موسميًا مع اتجاه وأثر يوم الأسبوع بمتوسط تاريخي لليوم نفسه. ولا يستخدم النموذج إلا إذا تفوق في متوسط الخطأ المطلق وWAPE باختبار زمني متحرك. لم تُعاير فترات التوقع."),
     "constraint": ("Hard constraints are checks no agent can override: pool limits, slot availability and nurse-ratio policy. A proposal that cannot be verified is rejected.", "القيود الصارمة فحوص لا يستطيع أي وكيل تجاوزها: حدود الموارد وتوفر المواعيد وسياسة نسبة التمريض. الاقتراح الذي لا يمكن التحقق منه يُرفض."),
     "sandbox": ("The sandbox is a copy of the twin where approved decisions are applied. Nothing is ever sent to a real hospital system.", "الـ sandbox نسخة من التوأم تُطبَّق عليها القرارات المعتمدة. لا يُرسل أي شيء إلى نظام مستشفى حقيقي."),
     "confidence": ("Confidence is shown only when the forecast supplies one and a simulator verified the impact. Otherwise it is unavailable; it is never estimated.", "درجة الثقة تظهر فقط عندما يوفرها التوقع ويتحقق المحاكي من الأثر. وإلا فهي غير متاحة ولا تُقدَّر."),
@@ -194,8 +194,8 @@ class Assistant:
                 add(T(f"{u} beds", f"أسرة {nm[u]}"), T(f"{nm[u]}: {d['occupied_now']} of {d['beds_total']} {plural(d['beds_total'], 'bed')} {plural(d['occupied_now'], 'is', 'are')} occupied ({d['occupancy_now_pct']}%), with {d['nurses_on_shift']} {plural(d['nurses_on_shift'], 'nurse')} on shift.",
                     f"{nm[u]}: {d['occupied_now']} من {d['beds_total']} أسرة مشغولة ({d['occupancy_now_pct']}٪) مع {d['nurses_on_shift']} ممرض في الوردية."), "beds, bed_stays, staff_shifts", as_of.isoformat())
                 if d["peak_forecast_upper_pct"] is not None:
-                    add(T(f"{u} forecast", f"توقع {nm[u]}"), T(f"The forecast peak for {nm[u]} over the next days is {d['peak_forecast_upper_pct']:.1f}% occupancy (upper bound of a weekday-average baseline).",
-                        f"ذروة التوقع لـ{nm[u]} خلال الأيام القادمة {d['peak_forecast_upper_pct']:.1f}٪ إشغال (الحد الأعلى لخط أساس بمتوسط يوم الأسبوع)."), "daily_metrics", None)
+                    add(T(f"{u} forecast", f"توقع {nm[u]}"), T(f"The point forecast peak for {nm[u]} over the next days is {d['peak_forecast_upper_pct']:.1f}% occupancy. A calibrated prediction interval is unavailable.",
+                        f"ذروة التوقع النقطي لـ{nm[u]} خلال الأيام القادمة {d['peak_forecast_upper_pct']:.1f}٪ إشغال. فترة التوقع المعايرة غير متاحة."), "daily_metrics", None)
             unmet = self.app._alerts_for(as_of)["unmet"]
             add(T("Capacity check", "فحص السعة"), (T("The agents found a shortfall: " + ", ".join(f"{k} {v}" for k, v in unmet.items()) + ".", "وجد الوكلاء عجزًا: " + "، ".join(f"{k} {v}" for k, v in unmet.items()) + ".") if unmet
                 else T("No bed shortfall is forecast at the baseline.", "لا يوجد عجز متوقع في الأسرة في الوضع الأساسي.")), "agents baseline run", as_of.isoformat())
@@ -228,9 +228,10 @@ class Assistant:
                 if wanted and s["key"] != wanted:
                     continue
                 r = s["rolling"]
-                best = r["methods"][r["best_by_mae"]]
-                add(T(s["title"], s["title"]), T(f"{s['title']}: over the 28 days before this moment the best method by absolute error was {r['best_by_mae'].replace('_', ' ')} (mean error {best['mae']} {s['unit']}). The forecast is an uncalibrated baseline.",
-                    f"{s['title']}: خلال الـ٢٨ يومًا قبل هذه اللحظة كانت أفضل طريقة بحسب الخطأ المطلق هي {r['best_by_mae'].replace('_', ' ')} (متوسط الخطأ {best['mae']} {s['unit']}). التوقع خط أساس غير معاير."), "daily_metrics", period(r["window"]))
+                chosen = s["selected_model"] or "weekday_mean"
+                score = r["methods"].get(chosen, {})
+                add(T(s["title"], s["title"]), T(f"{s['title']}: over the rolling-origin validation window the selected method was {chosen.replace('_', ' ')} (MAE {score.get('mae')}, WAPE {score.get('wape')}). Trend-seasonal is used only when both beat weekday mean. No calibrated prediction interval is available.",
+                    f"{s['title']}: خلال نافذة التحقق المتحرك كانت الطريقة المختارة {chosen.replace('_', ' ')} (متوسط الخطأ المطلق {score.get('mae')} وWAPE {score.get('wape')}). لا يُستخدم النموذج الموسمي إلا إذا تفوق في كليهما على متوسط يوم الأسبوع. فترة التوقع المعايرة غير متاحة."), s["table"], period(r["window"]))
         elif intent in ("attention", "recommend"):
             al = self.app._alerts_for(as_of)
             if intent == "attention":

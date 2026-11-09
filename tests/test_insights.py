@@ -91,11 +91,15 @@ class Insights(unittest.TestCase):
         for s in insights.forecasts(td, AS_OF)["series"]:
             r = s["rolling"]
             self.assertLess(r["window"]["to"], AS_OF.date().isoformat())
-            self.assertEqual(set(r["methods"]), {"weekday_mean", "seasonal_naive", "persistence"})
-            self.assertGreater(r["methods"]["weekday_mean"]["n"], 40)
+            self.assertEqual(set(r["methods"]), {"weekday_mean", "weekday_trend_seasonal"})
+            self.assertGreater(r["methods"]["weekday_mean"]["n"], 100)
             self.assertIn(r["best_by_mae"], r["methods"])
-        icu = next(s for s in insights.forecasts(td, AS_OF)["series"] if s["key"] == "icu_occ")["rolling"]["methods"]
-        self.assertAlmostEqual(icu["weekday_mean"]["wape"], 0.162)  # replacement pack's measured value
+        icu = next(s for s in insights.forecasts(td, AS_OF)["series"] if s["key"] == "icu_occ")
+        methods = icu["rolling"]["methods"]
+        self.assertLess(methods["weekday_mean"]["mae"], methods["weekday_trend_seasonal"]["mae"])
+        self.assertFalse(icu["beats_baseline"])
+        self.assertEqual(icu["selected_model"], "weekday_mean")
+        self.assertTrue(icu["abstain_reason"])
 
     def test_twin_map_matches_the_bed_tables(self):
         m = insights.twin_map(td, AS_OF)
