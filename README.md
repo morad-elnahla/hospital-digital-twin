@@ -1,37 +1,22 @@
 <div align="center">
-
-# 🏥 Hospital Digital Twin
-
-### ZAWolf · A transparent, scenario-based hospital operations prototype
-
-Explore operational data, review agent recommendations, and compare safe what-if scenarios through an English and Arabic interface.
-
-<p>
-  <img src="https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white" alt="Python 3.13">
-  <img src="https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
-  <img src="https://img.shields.io/badge/UI-React%20%2B%20TypeScript-3178C6?logo=typescript&logoColor=white" alt="React and TypeScript">
-  <img src="https://img.shields.io/badge/Database-SQLite-003B57?logo=sqlite&logoColor=white" alt="SQLite">
-  <img src="https://img.shields.io/badge/Data-synthetic-orange" alt="Synthetic data">
-</p>
-
-**An auditable engineering demo — not a live hospital system or a clinically validated decision aid.**
-
-[Quick start](#-quick-start) · [What it does](#-what-it-does) · [Roles](#-roles--permissions) · [Project guide](#-project-guide)
-
+  <h1>🏥 Hospital Digital Twin</h1>
+  <p><strong>ZAWolf · Hospital operations, made explorable</strong></p>
+  <p><strong>Observe → Analyze → Simulate → Decide</strong><br>
+  Explore operational data and review transparent what-if scenarios in English or Arabic.</p>
+  <p><img src="https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white" alt="Python 3.13"> <img src="https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI"> <img src="https://img.shields.io/badge/UI-React%20%2B%20TypeScript-3178C6?logo=typescript&logoColor=white" alt="React and TypeScript"> <img src="https://img.shields.io/badge/Database-SQLite-003B57?logo=sqlite&logoColor=white" alt="SQLite"> <img src="https://img.shields.io/badge/Data-synthetic-orange" alt="Synthetic data"></p>
+  <table>
+    <tr>
+      <td><strong>42</strong><br>CSV-backed tables</td>
+      <td><strong>678,013</strong><br>synthetic database rows</td>
+      <td><strong>4</strong><br>server-enforced roles</td>
+      <td><strong>EN · العربية</strong><br>English + Arabic UI</td>
+    </tr>
+  </table>
+  <p><a href="#-quick-start">🚀 Quick start</a> &nbsp;·&nbsp; <a href="#-what-it-does">✨ Features</a> &nbsp;·&nbsp; <a href="#-roles--permissions">👥 Roles</a> &nbsp;·&nbsp; <a href="#-project-guide">📚 Project guide</a></p>
+  <sub><strong>Synthetic-data engineering prototype · Not a live hospital system or clinically validated decision aid</strong></sub>
 </div>
 
 ---
-
-## 🌐 At a glance
-
-| | |
-|---|---|
-| **Purpose** | Hospital operations exploration, transparent agent recommendations, and bounded scenario simulation |
-| **Data** | Synthetic, CSV-backed dataset · 42 tables · 678,013 rows in the generated SQLite database |
-| **Backend** | Python 3.13 · FastAPI · Uvicorn · SQLite |
-| **Frontend** | React · TypeScript · Vite · English and Arabic/RTL |
-| **Safety approach** | Role-based access, audit trail, approval revalidation, fail-closed constraints, sandbox apply/rollback |
-| **Current state** | Phases 0–6 and platform work in Phases 7–8 are implemented; see the [verification record](docs/STATUS.md) |
 
 ## ✨ What it does
 
