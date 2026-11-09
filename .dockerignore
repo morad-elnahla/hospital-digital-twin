@@ -1,0 +1,11 @@
+.git
+.pytest_cache
+__pycache__
+**/__pycache__
+**/node_modules
+lovable_src/hdt-ui/.output
+lovable_src/hdt-ui/.wrangler
+runtime/*.sqlite*
+runtime/*.json
+runtime/*.jsonl
+.env

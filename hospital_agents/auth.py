@@ -17,7 +17,10 @@ import hmac
 import json
 import os
 import secrets
+import sqlite3
+import threading
 import time
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -60,12 +63,20 @@ def _hash(password: str, salt: bytes) -> str:
 
 
 class Auth:
-    def __init__(self, users_file: Path, clock=time.time) -> None:
+    def __init__(self, users_file: Path, clock=time.time, session_db: Path | None = None) -> None:
         self.file, self.clock = Path(users_file), clock
+        self.session_db = Path(session_db) if session_db is not None else None
+        self._session_lock = threading.Lock()
         self.sessions: dict[str, tuple[Principal, float]] = {}
         self.failures: dict[str, tuple[int, float]] = {}
         self.users: dict[str, dict] = json.loads(self.file.read_text()) if self.file.exists() else {}
         self.initial_credentials: dict[str, str] | None = None
+        if self.session_db is not None:
+            self.session_db.parent.mkdir(parents=True, exist_ok=True)
+            with closing(sqlite3.connect(self.session_db)) as db:
+                db.execute("CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, expires_at REAL NOT NULL)")
+                db.execute("CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions(expires_at)")
+                db.commit()
         if not self.users:
             self.initial_credentials = self._bootstrap()
 
@@ -120,20 +131,50 @@ class Auth:
         self.failures.pop(username, None)
         token = secrets.token_urlsafe(32)
         principal = Principal(username, user["role"])
-        self.sessions[token] = (principal, now + SESSION_TTL_S)
+        expires = now + SESSION_TTL_S
+        if self.session_db is None:
+            self.sessions[token] = (principal, expires)
+        else:
+            token_hash = hashlib.sha256(token.encode()).hexdigest()
+            with self._session_lock, closing(sqlite3.connect(self.session_db)) as db:
+                db.execute("INSERT INTO sessions(token_hash,username,expires_at) VALUES(?,?,?)",
+                           (token_hash, username, expires))
+                db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
+                db.commit()
         return token, principal
 
     def principal(self, token: str | None) -> Principal | None:
-        entry = self.sessions.get(token or "")
-        if entry is None:
+        if self.session_db is None:
+            entry = self.sessions.get(token or "")
+            if entry is None:
+                return None
+            if entry[1] < self.clock():
+                self.sessions.pop(token, None)
+                return None
+            return entry[0]
+        if not token:
             return None
-        if entry[1] < self.clock():
-            self.sessions.pop(token, None)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        now = self.clock()
+        with closing(sqlite3.connect(self.session_db)) as db:
+            row = db.execute("SELECT username, expires_at FROM sessions WHERE token_hash=?", (token_hash,)).fetchone()
+        if row is None or row[1] <= now:
+            if row is not None:
+                with self._session_lock, closing(sqlite3.connect(self.session_db)) as db:
+                    db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash,))
+                    db.commit()
             return None
-        return entry[0]
+        user = self.users.get(row[0])
+        return Principal(row[0], user["role"]) if user else None
 
     def logout(self, token: str | None) -> None:
-        self.sessions.pop(token or "", None)
+        if self.session_db is None:
+            self.sessions.pop(token or "", None)
+        elif token:
+            token_hash = hashlib.sha256(token.encode()).hexdigest()
+            with self._session_lock, closing(sqlite3.connect(self.session_db)) as db:
+                db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash,))
+                db.commit()
 
     @staticmethod
     def require(principal: Principal | None, permission: str) -> Principal:

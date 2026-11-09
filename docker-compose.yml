@@ -1,0 +1,45 @@
+services:
+  app:
+    build: .
+    environment:
+      HDT_HOST: 0.0.0.0
+      HDT_PORT: 8000
+      HDT_DATA_DIR: /app/data
+      HDT_RUNTIME_DIR: /app/runtime
+      HDT_POLICY_DIR: /app/policies
+      HDT_HEALTH_TOKEN: ${HDT_HEALTH_TOKEN:?Set a long random HDT_HEALTH_TOKEN in .env}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
+    volumes:
+      - hdt_runtime:/app/runtime
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/api/health',headers={'Authorization':'Bearer '+os.environ['HDT_HEALTH_TOKEN']}); urllib.request.urlopen(r,timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      start_period: 300s
+      retries: 3
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  hdt_runtime:
+  caddy_data:
+  caddy_config:

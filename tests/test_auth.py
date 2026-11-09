@@ -56,6 +56,18 @@ class AuthUnit(unittest.TestCase):
             self.auth.login("ghost", "whatever-pw")
         self.assertEqual(cm.exception.status, 401)
 
+    def test_sqlite_session_survives_auth_restart_and_logout_revokes_it(self):
+        session_db = self.dir / "sessions.sqlite"
+        first = Auth(self.dir / "persistent-users.json", session_db=session_db)
+        first.create_user("persistent", "long-enough-pw", "clinician")
+        token, principal = first.login("persistent", "long-enough-pw")
+        self.assertEqual(principal.role, "clinician")
+
+        restarted = Auth(self.dir / "persistent-users.json", session_db=session_db)
+        self.assertEqual(restarted.principal(token), principal)
+        restarted.logout(token)
+        self.assertIsNone(Auth(self.dir / "persistent-users.json", session_db=session_db).principal(token))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -108,7 +108,7 @@ Every row is one separate pytest process. Durations are wall time and include pr
 - The stated **1,236** actual OR turnover-gap count was not reproduced: adjacent actual-time pairs yield **1,262** when compared with the preceding surgery's turnover and **1,439** with the following surgery's turnover. See `docs/RECONCILIATION.md` for query definition and caveat.
 - The obsolete root 23-table `schema.sql` was removed. Canonical generated schema is `db/schema.sql` with 42 tables; `validation_report.json` was regenerated from `runtime/hdt.sqlite` (7 pass, 2 warn, 0 unresolved).
 
-## Part A final verification (Python 3.13 / Windows)
+## Part A final verification (Python 3.13 / Windows, before FastAPI migration)
 
 Every `tests/*.py` file ran in a separate `python -m pytest <file> -q` process with a 600-second per-file cap. `test_app.py` is below its 120-second target. The empty helper module is reported as skipped; browser and one legacy frontend harness test skip because browser rendering is unavailable.
 
@@ -149,3 +149,51 @@ Every `tests/*.py` file ran in a separate `python -m pytest <file> -q` process w
 The app test profile previously exceeded its target (135–149s); main contributors were provider retry/backoff in a secret-redaction-only test and 500ms stdlib HTTP-server shutdown polling for each isolated case. The former now uses a mocked provider network error and the test server uses a 1ms poll interval. The staff insight route also reuses its capacity calculation instead of running it three times. Final `test_app.py`: 112.27s.
 
 Lovable source suite: **40 passed** (6 Vitest files); Node **24.21.0** package build completed to `ui/`. Contract coverage is included in `test_contract_keys.py` (**1 passed**). Browser rendering, Docker execution, Python 3.12, and clinical validation remain unverified.
+
+## Part B — FastAPI, operations, and consolidation — done
+
+- `app.py` is the FastAPI/uvicorn transport and runtime entry point; the unchanged domain service is in `hospital_agents/service.py`. Existing route paths and response keys remain covered by `tests/contract_keys.json` and `test_contract_keys.py`. Request models feed generated OpenAPI at `/openapi.json`; JSON bodies from older clients without a content type remain accepted.
+- Auth sessions persist as SHA-256 token hashes in `runtime/sessions.sqlite`; logout and expiry revoke them. Roles, CSP, approval revalidation (409), audit logging, sandbox apply/rollback, and response error shapes were retained. Read-only operations no longer share the service-wide mutation lock; the alert cache uses a separate lock.
+- Structured request logs, environment configuration (`.env.example`), pinned FastAPI 0.135.1 / Pydantic 2.12.5 / uvicorn 0.41.0, non-root Docker image, app+Caddy compose, health check, CI workflow, and Windows/Unix run scripts are present. Docker and CI were not run.
+- To meet `test_app.py`'s 120-second target without weakening tests, profiling found repeated replay-calendar construction was expensive. `TwinData.snapshot()` now reuses up to 32 immutable as-of snapshots. The HTTP test adapter also now joins its Uvicorn thread instead of waiting on a startup flag that never resets.
+- Production lifespan smoke check built a fresh temporary SQLite database; `/` and `/openapi.json` returned 200, manager login returned 200, and the bearer session remained valid after constructing a second service instance.
+- Rebuilt database: 42 tables, 678,013 rows, 0 FK violations, `integrity_check=ok`; forecast evaluation wrote 144 rows (4/9 targets pass); validation report is 7 pass / 2 warn / 0 unresolved. Lovable source tests: **40 passed** in 6 files.
+- Baseline before FastAPI migration: simulate **7,361.3ms**, overview **794.0ms**, idle RSS **81.2MB**, after-request RSS **86.6MB**. After migration: simulate **8,607.0ms**, overview **1,009.6ms**, idle RSS **123.8MB**, after-request RSS **132.8MB**. Same Windows Python 3.13.13 process measurement; FastAPI/uvicorn add latency and memory.
+
+Latest `tests/*.py` verification: one fresh pytest process per file, **600-second cap**, Python 3.13.13 / Windows. Every test file passed; `phase4_helpers.py` contains no tests. `test_browser.py` skips 7 cases because Playwright/Chromium are unavailable; `test_frontend.py` skips one legacy harness case. Test app now completes in **83.59s** (<120s). Wall times include process startup.
+
+| File | Result | Time |
+| --- | --- | ---: |
+| `phase4_helpers.py` | no tests collected | 2.66s |
+| `test_agent_fixes.py` | 24 passed | 141.89s |
+| `test_agents.py` | 24 passed | 2.46s |
+| `test_agents_page.py` | 4 passed | 2.50s |
+| `test_app.py` | 26 passed | 86.00s |
+| `test_assistant.py` | 14 passed | 24.30s |
+| `test_auth.py` | 7 passed | 8.37s |
+| `test_browser.py` | 7 skipped | 2.85s |
+| `test_contract_keys.py` | 1 passed | 21.66s |
+| `test_corpus.py` | 8 passed | 2.62s |
+| `test_data_pack.py` | 16 passed | 48.69s |
+| `test_frontend.py` | 3 passed, 1 skipped | 4.81s |
+| `test_insights.py` | 12 passed | 21.36s |
+| `test_llm.py` | 19 passed | 19.26s |
+| `test_no_action_display.py` | 3 passed | 2.58s |
+| `test_nurse_gate_and_plurals.py` | 17 passed, 4 subtests | 24.53s |
+| `test_phase2_replay.py` | 5 passed | 22.23s |
+| `test_phase3_forecast.py` | 4 passed | 17.74s |
+| `test_phase4_bed_scenario.py` | 1 passed | 6.67s |
+| `test_phase4_combined_scenario.py` | 3 passed | 21.17s |
+| `test_phase4_or_scenario.py` | 2 passed | 2.10s |
+| `test_phase4_staff_scenario.py` | 1 passed | 6.21s |
+| `test_phase5_rag_eval.py` | 1 passed | 2.44s |
+| `test_phase5_roles_policy.py` | 2 passed | 5.78s |
+| `test_phase5b_simulation_relevance.py` | 3 passed | 32.64s |
+| `test_policies.py` | 10 passed | 2.15s |
+| `test_r4_decision_integration.py` | 1 passed | 11.83s |
+| `test_r4_fix_and_routing.py` | 4 passed | 164.66s |
+| `test_scenario_relevance_filter.py` | 1 passed | 2.40s |
+| `test_schema_drift.py` | 3 passed | 2.90s |
+| `test_store.py` | 6 passed | 2.11s |
+
+Not verified: browser rendering, Docker build/run, GitHub Actions CI, Python 3.12 behavior, or clinical validity. `test_agent_fixes.py` and `test_r4_fix_and_routing.py` exceed 120 seconds but each passed under the 600-second file cap.

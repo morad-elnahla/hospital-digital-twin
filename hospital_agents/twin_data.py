@@ -211,6 +211,9 @@ class TwinData:
         self.beds_total = defaultdict(int)
         for _, unit in self.beds:
             self.beds_total[unit] += 1
+        # A TwinData instance is a fixed replay snapshot. Building the calendar scans all
+        # future bookings and the full roster, so retain its immutable as-of snapshots.
+        self._snapshot_cache: dict[datetime, TwinSnapshot] = {}
 
     # ───────────────────────── twin snapshot ─────────────────────────
 
@@ -318,9 +321,17 @@ class TwinData:
         return tuple(slots), tuple(sorted(bookings, key=lambda b: b.id))
 
     def snapshot(self, as_of: datetime, version_suffix: str = "") -> TwinSnapshot:
-        slots, bookings = self.calendar(as_of)
-        return TwinSnapshot(as_of, f"replay@{as_of.isoformat()}{version_suffix}", self.pools(as_of), slots, bookings,
-                            self.calendar_end)
+        base = self._snapshot_cache.get(as_of)
+        if base is None:
+            slots, bookings = self.calendar(as_of)
+            base = TwinSnapshot(as_of, f"replay@{as_of.isoformat()}", self.pools(as_of), slots, bookings,
+                                self.calendar_end)
+            if len(self._snapshot_cache) >= 32:
+                self._snapshot_cache.pop(next(iter(self._snapshot_cache)))
+            self._snapshot_cache[as_of] = base
+        if version_suffix:
+            return dataclasses.replace(base, version=f"{base.version}{version_suffix}")
+        return base
 
     # ───────────────────────── forecast ─────────────────────────
 
