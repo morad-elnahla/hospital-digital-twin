@@ -96,8 +96,10 @@ class Api(unittest.TestCase):
     # ── lifecycle ──
     def test_full_decision_lifecycle(self):
         self.set_policies()
-        _, d = self.call("/api/run", STRESS, "analyst")
+        scenario_with_intervention = {**STRESS, "interventions": [{"type": "demand_change", "unit": "ICU", "x": 1.3}]}
+        _, d = self.call("/api/run", scenario_with_intervention, "analyst")
         self.assertEqual((d["status"], d["stale"]), ("PENDING", False))
+        self.assertEqual(d["scenario"]["interventions"][0]["type"], "demand_change")
         self.assertTrue(d["accepted"])
         self.assertTrue(all(p["agent"] == "appointment" for p in d["accepted"]))  # OR team IDs are absent, so moves fail closed
         self.assertTrue(any("rolling-origin validation is missing" in note for r in d["reports"]
@@ -293,6 +295,13 @@ class Api(unittest.TestCase):
         self.assertEqual(self.call("/api/decisions/DEC-x", who="viewer")[0], 404)
         self.assertEqual(self.call("/api/decisions/DEC-x/approve", {}, "manager")[0], 404)
         self.assertEqual(self.call("/api/rollback", {}, "manager")[0], 409)
+
+    def test_invalid_scenario_intervention_returns_clear_400(self):
+        status, body = self.call("/api/simulate", {"interventions": [
+            {"type": "demand_change", "unit": "ICU", "x": "many"}]}, "analyst")
+        self.assertEqual(status, 400)
+        self.assertIn("demand_change", body["error"])
+        self.assertIn("x", body["error"])
 
     def test_policy_roundtrip_and_removal(self):
         self.call("/api/policies", {"unit": "ICU", "value": 2}, "manager")

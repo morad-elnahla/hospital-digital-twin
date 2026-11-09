@@ -8,9 +8,12 @@ def test_combined_staff_cut_demand_surge_and_move_rejects_violations_and_is_mono
         twelve = app.parse_scenario({"unit": "ICU", "multiplier": 12})
         low = app._scenario_core(as_of, one, snapshot)
         high = app._scenario_core(as_of, twelve, snapshot)
+        assert low == app._scenario_core(as_of, one, snapshot)
         assert high["bed_demand"]["ICU"]["shortfall"] >= low["bed_demand"]["ICU"]["shortfall"]
         assert high["bed_demand"]["ICU"]["demand"] > low["bed_demand"]["ICU"]["demand"]
         assert high["bed_demand"]["ICU"]["label"] == "assumption: unvalidated baseline forecast"
+        assert low["bed_demand"]["ICU"]["why_nothing_moved"]
+        assert low["bed_demand"]["ICU"]["what_would_help"]
 
         booking = next((b for b in snapshot.bookings if b.slot.domain == "OR"), None)
         destination = next((s for s in snapshot.slots if booking and s.key.domain == "OR"
@@ -74,6 +77,6 @@ def test_run_persists_versioned_input_and_replays_with_same_seed():
         assert parameters["data_version"] and parameters["policy_version"]
         assert seed == 17 and events == 2
         replay = app.replay_simulation(result["simulation_id"])
-        assert replay["core"]["bed_demand"]["ICU"]["demand"] == saved_result["core"]["bed_demand"]["ICU"]["demand"]
+        assert replay["core"] == saved_result["core"]
     finally:
         temp.cleanup()

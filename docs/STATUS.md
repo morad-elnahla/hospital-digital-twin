@@ -71,6 +71,9 @@ Every row is one separate pytest process. Durations are wall time and include pr
 - Each run and its scenario/result events are persisted to `simulation_runs`/`simulation_events`; the replay endpoint reruns the stored parameters with the same seed. No source CSV is changed.
 - The simulator UI now displays the weekday-mean estimate and staffing demand with the required assumption label; its text reflects per-run replay storage.
 - Acceptance: staff, bed, OR, and combined scenario files passed **1/1, 1/1, 2/2, 3/3** respectively; combined covers monotonic x1.3/x12 demand, validation, and replay determinism. Existing API suite **22 passed**, with the simulation preview case rerun **1 passed**; frontend checks **3 passed, 1 skipped**. Python 3.13 / Windows.
+- Verification rerun: `tests/test_phase4_combined_scenario.py` **3 passed**; API decision lifecycle with an intervention and approval/apply/rollback plus invalid-intervention HTTP 400 **2 passed**.
+- Same-as-of comparison command output (`python` calling `App.simulate`), `as_of=2026-10-17T08:00:00`: multiplier **1.3** → ICU shortfall **1**, **5 accepted actions**, **0 beds moved**, **0 reschedules**; multiplier **12** → shortfall **101**, **5 accepted actions**, **0 beds moved**, **0 reschedules**. The actions are clinic appointment changes; no ICU bed transfer or surgery move passed constraints. This is a 100-bed shortfall difference.
+- Queue/wait estimate remains unavailable: the pack has daily aggregate arrivals and observed waits, but no ER service-completion rate or service-time distribution, number of parallel staffed service stations, or arrival/service observations at a matching hourly grain. Erlang-C utilization and waiting time therefore cannot be calibrated; daily average wait is not sufficient to infer those inputs.
 
 ## Remaining verification limits
 
