@@ -1,0 +1,12 @@
+table: resource_bookings
+data_version: csv-snapshot-2026-11-09
+source: data/resource_bookings.csv
+primary_key: [booking_id]
+relations:
+  - resource_id -> resources.resource_id
+  - visit_id -> visits.visit_id
+kpi_mappings:
+  - name: resource load
+    columns: quantity_reserved
+    mapping: resource_id over booking_start..booking_end; exclude cancelled
+columns: [booking_id, resource_id, visit_id, booking_start, booking_end, quantity_reserved, status]

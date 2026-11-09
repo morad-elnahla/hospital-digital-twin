@@ -1,0 +1,9 @@
+table: forecast_results_aggregated
+data_version: csv-snapshot-2026-11-09
+source: data/forecast_results_aggregated.csv
+primary_key: [forecast_id]
+relations:
+  - run_id -> forecast_runs.run_id
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [forecast_id, run_id, created_at, target_metric, department_id, forecast_for, horizon_hours, horizon_days, predicted_value, lower_bound, upper_bound, model_name, model_version, actual_value, error_value, in_interval, origin_time, target_day_capped]

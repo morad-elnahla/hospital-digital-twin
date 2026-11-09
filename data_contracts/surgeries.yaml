@@ -1,0 +1,18 @@
+table: surgeries
+data_version: csv-snapshot-2026-11-09
+source: data/surgeries.csv
+primary_key: [surgery_id]
+relations:
+  - visit_id -> visits.visit_id
+  - or_id -> operating_rooms.or_id
+kpi_mappings:
+  - name: surgery load
+    columns: planned_duration_minutes
+    mapping: or_id + planned_start; planned schedule, not verified outcome
+  - name: post-op ICU need
+    columns: icu_bed_required/post_op_destination
+    mapping: planned case fields; historical stays are retrospective only
+  - name: OR specialty compatibility
+    columns: specialty
+    mapping: case field checked against operating_rooms.specialty; named provider/team IDs are unavailable
+columns: [surgery_id, visit_id, or_id, specialty, planned_start, planned_duration_minutes, actual_start, actual_end, urgency, status, expected_contribution_margin_egp, contribution_margin_egp, case_type, cancel_reason, delay_minutes, turnover_minutes, icu_bed_required, post_op_destination, data_source]

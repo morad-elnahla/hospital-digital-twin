@@ -1,0 +1,12 @@
+table: appointments
+data_version: csv-snapshot-2026-11-09
+source: data/appointments.csv
+primary_key: [appointment_id]
+relations:
+  - patient_id -> patients.patient_id
+  - department_id -> departments.department_id
+kpi_mappings:
+  - name: scheduled appointments
+    columns: scheduled_start
+    mapping: count by department_id and date; status filters the event
+columns: [appointment_id, patient_id, department_id, scheduled_start, duration_minutes, appointment_type, status, wait_minutes]

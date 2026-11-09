@@ -1,0 +1,9 @@
+table: beds
+data_version: csv-snapshot-2026-11-09
+source: data/beds.csv
+primary_key: [bed_id]
+relations:
+  - room_id -> rooms.room_id
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [bed_id, room_id, bed_type, status, is_isolation_capable]

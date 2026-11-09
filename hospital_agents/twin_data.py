@@ -29,8 +29,11 @@ from __future__ import annotations
 import csv
 import dataclasses
 import re
+import sqlite3
 import statistics
 from collections import defaultdict
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from pathlib import Path
@@ -66,10 +69,95 @@ def _read(path: Path) -> list[dict]:
         return list(csv.DictReader(f))
 
 
+class _SqliteTable(Sequence[dict]):
+    """Lazy sequence preserving TwinData's legacy list-of-string-dicts interface."""
+
+    def __init__(self, path: Path, table: str, types: dict[str, str]) -> None:
+        self.path, self.table, self.types = path, table, types
+        self._quoted = '"' + table.replace('"', '""') + '"'
+
+    def _decode(self, row: sqlite3.Row) -> dict:
+        out = {}
+        for key in row.keys():
+            value = row[key]
+            if value is None:
+                out[key] = ""
+            elif self.types.get(key) == "BOOLEAN":
+                out[key] = "True" if bool(value) else "False"
+            else:
+                out[key] = str(value)
+        return out
+
+    def __iter__(self) -> Iterator[dict]:
+        with closing(sqlite3.connect(str(self.path))) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(f"SELECT * FROM {self._quoted}")
+            try:
+                for row in cursor:
+                    yield self._decode(row)
+            finally:
+                cursor.close()
+
+    def __len__(self) -> int:
+        with closing(sqlite3.connect(str(self.path))) as conn:
+            return conn.execute(f"SELECT COUNT(*) FROM {self._quoted}").fetchone()[0]
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return list(self)[index]
+        if index < 0:
+            index += len(self)
+        with closing(sqlite3.connect(str(self.path))) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(f"SELECT * FROM {self._quoted} LIMIT 1 OFFSET ?", (index,)).fetchone()
+        if row is None:
+            raise IndexError(index)
+        return self._decode(row)
+
+    def __add__(self, other):
+        return list(self) + list(other)
+
+
+class _SqliteTables(Mapping[str, _SqliteTable]):
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._overrides = {}
+        with closing(sqlite3.connect(str(path))) as conn:
+            self._types = {}
+            names = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'hdt_metadata'")]
+            for table in names:
+                self._types[table] = {r[1]: (r[2] or "").upper() for r in conn.execute(f'PRAGMA table_info("{table}")')}
+        self._tables = {name: _SqliteTable(path, name, self._types[name]) for name in names}
+
+    def __getitem__(self, key: str) -> _SqliteTable:
+        return self._overrides.get(key, self._tables[key])
+
+    def __setitem__(self, key: str, value) -> None:
+        if key not in self._tables:
+            raise KeyError(key)
+        self._overrides[key] = value
+
+    def __iter__(self):
+        return iter(self._tables)
+
+    def __len__(self) -> int:
+        return len(self._tables)
+
+
 class TwinData:
-    def __init__(self, data_dir: str | Path) -> None:
+    def __init__(self, data_dir: str | Path, prefer_sqlite: bool = True) -> None:
         d = Path(data_dir)
-        t = {p.stem: _read(p) for p in d.glob("*.csv")}
+        if d.is_file() and d.suffix in {".sqlite", ".db"}:
+            db_path = d
+        else:
+            db_path = d.parent / "runtime" / "hdt.sqlite"
+        if prefer_sqlite and db_path.exists():
+            t = _SqliteTables(db_path)
+            self.storage_backend = "sqlite"
+        else:
+            # Kept for callers/tests that construct an isolated TwinData from an unbuilt pack.
+            t = {p.stem: _read(p) for p in d.glob("*.csv")}
+            self.storage_backend = "csv-fallback"
         self.t = t
         self.dept = {r["department_id"]: r for r in t["departments"]}
         self.dept_by_type = {r["department_type"]: r["department_id"] for r in t["departments"]}

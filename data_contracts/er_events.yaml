@@ -1,0 +1,11 @@
+table: er_events
+data_version: csv-snapshot-2026-11-09
+source: data/er_events.csv
+primary_key: [er_event_id]
+relations:
+  - visit_id -> visits.visit_id
+kpi_mappings:
+  - name: queue wait events
+    columns: queue_minutes
+    mapping: event_time grouped by visit_id/event_type
+columns: [er_event_id, visit_id, event_time, event_type, queue_minutes, notes_code]

@@ -1,0 +1,14 @@
+table: daily_metrics
+data_version: csv-snapshot-2026-11-09
+source: data/daily_metrics.csv
+primary_key: [metric_id]
+relations:
+  - department_id -> departments.department_id
+kpi_mappings:
+  - name: reported arrivals
+    columns: arrivals_count
+    mapping: department_id + metric_date; ER value is an aggregate snapshot
+  - name: reported wait
+    columns: avg_wait_minutes/p90_wait_minutes
+    mapping: department_id + metric_date; period summary
+columns: [metric_id, metric_date, department_id, arrivals_count, admissions_count, discharges_count, occupied_beds, staffed_beds, occupancy_rate, avg_wait_minutes, p90_wait_minutes, er_queue_peak, surgeries_scheduled, surgeries_completed, or_utilization_rate, staff_absence_count, overtime_hours, avg_occupied_beds, peak_occupied_beds, boarders_peak, lwbs_count, transfers_out, admit_requests, unmet_demand, er_pressure_index, er_hours_at_capacity, is_capacity_capped, pending_discharges, icu_free_beds, or_rooms_open, surgeries_cancelled, resource_utilization_rate]

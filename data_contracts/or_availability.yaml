@@ -1,0 +1,14 @@
+table: or_availability
+data_version: csv-snapshot-2026-11-09
+source: data/or_availability.csv
+primary_key: [date, or_id]
+relations:
+  - or_id -> operating_rooms.or_id
+kpi_mappings:
+  - name: OR capacity
+    columns: availability_status/capacity_minutes/free_minutes
+    mapping: or_id + date + roster window
+  - name: OR roster headcount
+    columns: rostered_surgeons/rostered_anesthetists
+    mapping: counts only; no named provider/team assignment is present
+columns: [date, or_id, window_start, window_end, availability_status, rostered_surgeons, rostered_anesthetists, capacity_minutes, planned_bookings, booked_minutes_with_turnover, free_minutes, largest_free_block_minutes, data_source]

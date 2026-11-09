@@ -1,0 +1,9 @@
+table: operating_rooms
+data_version: csv-snapshot-2026-11-09
+source: data/operating_rooms.csv
+primary_key: [or_id]
+relations:
+  - department_id -> departments.department_id
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [or_id, department_id, room_name, specialty, daily_capacity_hours, is_active]

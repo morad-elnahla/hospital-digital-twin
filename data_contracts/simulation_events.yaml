@@ -1,0 +1,9 @@
+table: simulation_events
+data_version: csv-snapshot-2026-11-09
+source: data/simulation_events.csv
+primary_key: [simulation_event_id]
+relations:
+  - simulation_id -> simulation_runs.simulation_id
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [simulation_event_id, simulation_id, event_time, entity_type, entity_id, event_type, department_id, value_numeric, details_json]

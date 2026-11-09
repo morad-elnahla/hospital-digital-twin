@@ -1,0 +1,10 @@
+table: staff_assignments
+data_version: csv-snapshot-2026-11-09
+source: data/staff_assignments.csv
+primary_key: [assignment_id]
+relations:
+  - staff_id -> staff.staff_id
+  - department_id -> departments.department_id
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [assignment_id, staff_id, department_id, assignment_start, assignment_end, assignment_type, workload_units, source_scenario_id]

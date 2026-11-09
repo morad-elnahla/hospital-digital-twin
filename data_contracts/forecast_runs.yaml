@@ -1,0 +1,9 @@
+table: forecast_runs
+data_version: csv-snapshot-2026-11-09
+source: data/forecast_runs.csv
+primary_key: [run_id]
+relations:
+  - none declared
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [run_id, origin_time, model_name, model_version, trained_through, feature_set_version]

@@ -1,0 +1,11 @@
+table: visits
+data_version: csv-snapshot-2026-11-09
+source: data/visits.csv
+primary_key: [visit_id]
+relations:
+  - patient_id -> patients.patient_id
+kpi_mappings:
+  - name: visit arrivals
+    columns: arrival_time
+    mapping: count by arrival date; can differ from daily_metrics convention
+columns: [visit_id, patient_id, arrival_time, arrival_source, acuity_level, service_line, disposition, departure_time, wait_minutes, length_of_stay_hours, triage_time, provider_seen_time, decision_to_admit_time, ward_bed_assigned_time, boarding_minutes, admit_target_dept, lwbs_reason, chief_complaint_group, data_source]

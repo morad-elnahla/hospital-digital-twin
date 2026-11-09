@@ -1,0 +1,11 @@
+table: financial_daily
+data_version: csv-snapshot-2026-11-09
+source: data/financial_daily.csv
+primary_key: [financial_id]
+relations:
+  - department_id -> departments.department_id
+kpi_mappings:
+  - name: daily financial totals
+    columns: revenue_egp/labor_cost_egp/supply_cost_egp/overtime_cost_egp
+    mapping: department_id + metric_date
+columns: [financial_id, metric_date, department_id, revenue_egp, labor_cost_egp, supply_cost_egp, overtime_cost_egp, cancelled_procedure_risk_egp]

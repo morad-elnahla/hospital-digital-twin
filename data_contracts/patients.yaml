@@ -1,0 +1,9 @@
+table: patients
+data_version: csv-snapshot-2026-11-09
+source: data/patients.csv
+primary_key: [patient_id]
+relations:
+  - none declared
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [patient_id, synthetic_age, synthetic_sex, synthetic_cohort, created_at]

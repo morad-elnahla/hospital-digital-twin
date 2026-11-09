@@ -1,7 +1,7 @@
 {
-  "report_type": "Current CSV snapshot consistency report",
-  "generated_on": "2026-11-08",
-  "source": "current data/*.csv, counts verified; not an original generator validation report",
+  "report_type": "SQLite-backed synthetic data validation",
+  "generated_on": "2026-11-09",
+  "source": "C:\\Users\\2m\\Desktop\\hospital_digital_twin\\runtime\\hdt.sqlite",
   "table_count": 42,
   "visit_count": 44035,
   "bed_stay_count": 47181,
@@ -55,23 +55,67 @@
     "surgeries": 8953,
     "visits": 44035
   },
-  "unresolved_quality_checks": [
+  "checks": [
     {
-      "check": "Overlapping planned surgeries",
-      "value": 311,
-      "detail": "Same operating room booked twice"
+      "name": "Overlapping bed stays",
+      "value": 0,
+      "status": "pass",
+      "detail": "Same bed used by two stays at once"
     },
     {
-      "check": "Wait longer than length of stay",
-      "value": 408,
-      "detail": "Visits whose wait exceeds their whole stay"
+      "name": "Overlapping OR intervals",
+      "value": 0,
+      "status": "pass",
+      "detail": "Performed cases use actual_start/actual_end; only still-SCHEDULED cases use planned intervals; cancelled cases are excluded"
     },
     {
-      "check": "ER arrivals match visits",
-      "value": 390,
-      "detail": "Days where daily_metrics disagrees with the visits table"
+      "name": "Wait exceeds length of stay beyond rounding",
+      "value": 0,
+      "status": "pass",
+      "detail": "wait_minutes is a whole-minute measure while length_of_stay_hours is rounded to 0.01h; a 1-minute representation tolerance is applied"
+    },
+    {
+      "name": "Cancelled surgeries with realised margin",
+      "value": 0,
+      "status": "pass",
+      "detail": "Cancelled cases must have zero realised margin"
+    },
+    {
+      "name": "ER arrivals match eligible visits",
+      "value": 0,
+      "status": "pass",
+      "detail": "daily_metrics counts WALK_IN and AMBULANCE visits within its date range; ELECTIVE visits are not ER arrivals"
+    },
+    {
+      "name": "Days with unusual staff coverage",
+      "value": 11,
+      "status": "warn",
+      "detail": "Shifts per day vs median 81: 2025-05-03 has 34, 2025-05-10 has 37, 2025-05-16 has 39, 2025-05-17 has 34, 2025-05-23 has 40, 2025-10-11 has 40"
+    },
+    {
+      "name": "Days without any nurse shift",
+      "value": 0,
+      "status": "pass",
+      "detail": "Days with no present nurse per unit: ER 0, ICU 0, WARD 0"
+    },
+    {
+      "name": "Approved policies",
+      "value": 0,
+      "status": "warn",
+      "detail": "Policies in the pack are synthetic examples and none is approved"
+    },
+    {
+      "name": "Decision confidence calibrated",
+      "value": 0,
+      "status": "pass",
+      "detail": "Confidence is blank until a model is calibrated"
     }
   ],
+  "summary": {
+    "pass": 7,
+    "warn": 2
+  },
+  "unresolved_quality_checks": [],
   "warnings": [
     {
       "check": "Days with unusual staff coverage",
@@ -84,10 +128,18 @@
       "detail": "Policies in the pack are synthetic examples and none is approved"
     }
   ],
+  "evidence": {
+    "confirmed_computation": {
+      "source": "C:\\Users\\2m\\Desktop\\hospital_digital_twin\\runtime\\hdt.sqlite",
+      "method": "read-only checks over loaded source rows"
+    },
+    "model_estimate": [],
+    "assumption": [],
+    "unavailable": []
+  },
   "limitations": [
     "Synthetic data only; no clinical validation",
-    "This snapshot supersedes stale v2 row-count claims only, not prior generator integrity assertions",
-    "No new historical records were added or edited",
-    "Unresolved data-quality checks are retained as failures, not suppressed"
+    "Source CSV values are loaded unchanged; this report applies documented counting conventions.",
+    "OR availability covers 2026-10-21 through 2026-11-10 only."
   ]
 }

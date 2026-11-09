@@ -1,0 +1,9 @@
+table: cost_rates
+data_version: csv-snapshot-2026-11-09
+source: data/cost_rates.csv
+primary_key: [cost_rate_id]
+relations:
+  - department_id -> departments.department_id
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [cost_rate_id, cost_category, department_id, unit, rate_egp, effective_from, effective_to]

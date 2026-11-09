@@ -1,3 +1,3 @@
 # TODO
 
-- Phase 0: Investigate why `tests/test_agent_fixes.py` emits `EEEE` and remains running beyond 60 seconds with the repository root on `PYTHONPATH`; rerun and then finish the per-file baseline. One attempt failed to import project modules due to invocation path; a corrected attempt still did not complete.
+- Phase 0 test follow-up (2026-11-09): The requested `python -m pytest tests/test_agent_fixes.py -x -q --timeout=120` did not collect tests because `pytest-timeout` is unavailable (`unrecognized arguments: --timeout=120`). I then ran the file once with `python -m unittest discover -s tests -p test_agent_fixes.py -v`, under a 120-second process limit: 24 tests passed in 58.003s on Python 3.13.13/Windows. No traceback occurred, so there is no failing traceback to paste. Python 3.12 is not available in this environment. The earlier Phase 0 statement that this test stalled is superseded by this successful run.

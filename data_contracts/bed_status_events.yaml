@@ -1,0 +1,9 @@
+table: bed_status_events
+data_version: csv-snapshot-2026-11-09
+source: data/bed_status_events.csv
+primary_key: [event_id]
+relations:
+  - bed_id -> beds.bed_id
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [event_id, bed_id, event_time, status, reason, end_time]

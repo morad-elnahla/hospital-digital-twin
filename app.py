@@ -605,6 +605,9 @@ if __name__ == "__main__":
     loaded = llm.load_env(ROOT / ".env")                    # real environment variables always win over .env
     if args.reset_credentials:
         (ROOT / "runtime" / "users.json").unlink(missing_ok=True)
+    if Path(args.data).resolve() == (ROOT / "data").resolve() and not (ROOT / "runtime" / "hdt.sqlite").exists():
+        from db.build_db import build
+        build(db_path=ROOT / "runtime" / "hdt.sqlite")
     server = make_server(Path(args.data), args.port)
     creds = Handler.app.auth.initial_credentials
     if creds:

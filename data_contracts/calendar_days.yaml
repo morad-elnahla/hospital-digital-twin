@@ -1,0 +1,9 @@
+table: calendar_days
+data_version: csv-snapshot-2026-11-09
+source: data/calendar_days.csv
+primary_key: [date]
+relations:
+  - none declared
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [date, dow, is_weekend, is_holiday, holiday_name, is_ramadan, is_eid, season, school_term, days_to_holiday]

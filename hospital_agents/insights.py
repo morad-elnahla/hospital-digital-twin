@@ -281,18 +281,27 @@ def quality(td: TwinData, report_path: Path | None = None) -> dict:
     add("Overlapping bed stays", _overlaps(stays), _overlaps(stays) == 0, "Same bed used by two stays at once")
     by_or = defaultdict(list)
     for s in t["surgeries"]:
-        by_or[s["or_id"]].append((_dt(s["planned_start"]), _dt(s["planned_start"]) + timedelta(minutes=int(s["planned_duration_minutes"]))))
-    add("Overlapping planned surgeries", _overlaps(by_or), _overlaps(by_or) == 0, "Same operating room booked twice")
+        if s["status"] in {"COMPLETED", "DELAYED"} and s["actual_start"] and s["actual_end"]:
+            by_or[s["or_id"]].append((_dt(s["actual_start"]), _dt(s["actual_end"])))
+        elif s["status"] == "SCHEDULED":
+            start = _dt(s["planned_start"])
+            by_or[s["or_id"]].append((start, start + timedelta(minutes=int(s["planned_duration_minutes"]))))
+    or_overlaps = _overlaps(by_or)
+    add("Overlapping OR intervals", or_overlaps, or_overlaps == 0,
+        "Performed cases use actual_start/actual_end; only still-SCHEDULED cases use planned intervals; cancelled cases are excluded")
     wait_gt_los = sum(1 for v in t["visits"]
                       if v["wait_minutes"] and v["length_of_stay_hours"]
-                      and float(v["wait_minutes"]) > float(v["length_of_stay_hours"]) * 60 + 1e-6)
-    add("Wait longer than length of stay", wait_gt_los, wait_gt_los == 0, "Visits whose wait exceeds their whole stay")
+                      and float(v["wait_minutes"]) > float(v["length_of_stay_hours"]) * 60 + 1.0)
+    add("Wait exceeds length of stay beyond rounding", wait_gt_los, wait_gt_los == 0,
+        "wait_minutes is a whole-minute measure while length_of_stay_hours is rounded to 0.01h; a 1-minute representation tolerance is applied")
     bad_margin = sum(1 for s in t["surgeries"] if s["status"] == "CANCELLED" and float(s["contribution_margin_egp"] or 0) != 0)
     add("Cancelled surgeries with realised margin", bad_margin, bad_margin == 0, "Cancelled cases must have zero realised margin")
     er = td.dept_by_type["ER"]
-    arrivals = Counter(v["arrival_time"][:10] for v in t["visits"])
+    arrivals = Counter(v["arrival_time"][:10] for v in t["visits"]
+                       if v["arrival_source"] in {"WALK_IN", "AMBULANCE"})
     mismatch = [d for d, rows in td.metrics.items() if int(rows[er]["arrivals_count"]) != arrivals.get(d, 0)]
-    add("ER arrivals match visits", len(mismatch), not mismatch, "Days where daily_metrics disagrees with the visits table")
+    add("ER arrivals match eligible visits", len(mismatch), not mismatch,
+        "daily_metrics counts WALK_IN and AMBULANCE visits within its date range; ELECTIVE visits are not ER arrivals")
     # staff coverage per day relative to the median day
     per_day = Counter(s[0].date().isoformat() for s in td.shifts)
     days = [d for d in td.metrics]

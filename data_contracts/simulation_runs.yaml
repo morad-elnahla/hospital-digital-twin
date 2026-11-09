@@ -1,0 +1,9 @@
+table: simulation_runs
+data_version: csv-snapshot-2026-11-09
+source: data/simulation_runs.csv
+primary_key: [simulation_id]
+relations:
+  - none declared
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [simulation_id, created_at, scenario_name, scenario_type, baseline_or_scenario, random_seed, start_time, end_time, status, parameters_json, results_json, notes]

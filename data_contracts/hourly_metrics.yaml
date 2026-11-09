@@ -1,0 +1,11 @@
+table: hourly_metrics
+data_version: csv-snapshot-2026-11-09
+source: data/hourly_metrics.csv
+primary_key: [hour_ts, department_id]
+relations:
+  - department_id -> departments.department_id
+kpi_mappings:
+  - name: hourly flow
+    columns: arrivals/census/boarders/queue_len/avg_wait
+    mapping: department_id + hour_ts
+columns: [hour_ts, department_id, arrivals, census, boarders, queue_len, avg_wait]

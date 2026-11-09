@@ -1,0 +1,9 @@
+table: future_booking_capacity_by_unit
+data_version: csv-snapshot-2026-11-09
+source: data/future_booking_capacity_by_unit.csv
+primary_key: [date, unit, kind]
+relations:
+  - none declared
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [date, unit, kind, bookings_total, bookings_scheduled, bookings_cancelled, capacity_minutes, booked_minutes, free_minutes, largest_free_block_minutes, availability]

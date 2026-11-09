@@ -1,0 +1,9 @@
+table: hourly_forecast_evaluation
+data_version: csv-snapshot-2026-11-09
+source: data/hourly_forecast_evaluation.csv
+primary_key: [target_metric, model_name]
+relations:
+  - none declared
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [target_metric, model_name, n, mae, wape, mape_floor, mape_floor_value, bias, coverage_80, skill_vs_naive]

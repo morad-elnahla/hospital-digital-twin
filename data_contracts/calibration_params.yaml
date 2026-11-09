@@ -1,0 +1,9 @@
+table: calibration_params
+data_version: csv-snapshot-2026-11-09
+source: data/calibration_params.csv
+primary_key: [group_type, group_value, parameter, stat]
+relations:
+  - none declared
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [group_type, group_value, parameter, stat, value, n, unit]

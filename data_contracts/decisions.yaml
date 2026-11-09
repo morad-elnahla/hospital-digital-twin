@@ -1,0 +1,9 @@
+table: decisions
+data_version: csv-snapshot-2026-11-09
+source: data/decisions.csv
+primary_key: [decision_id]
+relations:
+  - simulation_id -> simulation_runs.simulation_id
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [decision_id, created_at, simulation_id, bottleneck, recommendation, expected_wait_change_pct, expected_occupancy_change_pct, expected_cost_change_egp, expected_revenue_risk_change_egp, confidence_score, assumptions_json, approval_status, approved_by_role, approved_at, audit_notes]

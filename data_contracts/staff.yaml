@@ -1,0 +1,9 @@
+table: staff
+data_version: csv-snapshot-2026-11-09
+source: data/staff.csv
+primary_key: [staff_id]
+relations:
+  - department_id -> departments.department_id
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [staff_id, department_id, role, skill_group, employment_type, max_hours_per_week, hourly_cost_egp, is_active]

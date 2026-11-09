@@ -1,0 +1,9 @@
+table: data_quality_report
+data_version: csv-snapshot-2026-11-09
+source: data/data_quality_report.csv
+primary_key: [check_name]
+relations:
+  - none declared
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [check_name, status, value, threshold]

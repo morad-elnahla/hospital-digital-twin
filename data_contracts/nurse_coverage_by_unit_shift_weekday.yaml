@@ -1,0 +1,9 @@
+table: nurse_coverage_by_unit_shift_weekday
+data_version: csv-snapshot-2026-11-09
+source: data/nurse_coverage_by_unit_shift_weekday.csv
+primary_key: [period, unit, shift, weekday]
+relations:
+  - none declared
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [period, unit, shift, weekday, shifts, covered_shifts, min_nurses_on_shift, mean_nurses_on_shift, max_nurses_on_shift, max_required_nurses, max_occupied_or_active_ors, coverage_pct]

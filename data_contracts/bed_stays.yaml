@@ -1,0 +1,12 @@
+table: bed_stays
+data_version: csv-snapshot-2026-11-09
+source: data/bed_stays.csv
+primary_key: [bed_stay_id]
+relations:
+  - visit_id -> visits.visit_id
+  - bed_id -> beds.bed_id
+kpi_mappings:
+  - name: bed occupancy
+    columns: start_time/end_time
+    mapping: active interval per bed_id; end_time blank means still occupied
+columns: [bed_stay_id, visit_id, bed_id, start_time, end_time, transfer_reason, department_id, bed_type, discharge_order_time, bed_ready_time, data_source]

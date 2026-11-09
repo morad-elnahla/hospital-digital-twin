@@ -1,0 +1,9 @@
+table: rooms
+data_version: csv-snapshot-2026-11-09
+source: data/rooms.csv
+primary_key: [room_id]
+relations:
+  - department_id -> departments.department_id
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [room_id, department_id, room_name, room_type, is_active]

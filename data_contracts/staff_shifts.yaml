@@ -1,0 +1,12 @@
+table: staff_shifts
+data_version: csv-snapshot-2026-11-09
+source: data/staff_shifts.csv
+primary_key: [shift_id]
+relations:
+  - staff_id -> staff.staff_id
+  - department_id -> departments.department_id
+kpi_mappings:
+  - name: rostered staff
+    columns: staff_id/status
+    mapping: department_id during shift_start..shift_end; exclude ABSENT
+columns: [shift_id, staff_id, department_id, shift_start, shift_end, status]

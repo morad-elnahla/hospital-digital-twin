@@ -1,0 +1,9 @@
+table: nurse_coverage_shift_detail
+data_version: csv-snapshot-2026-11-09
+source: data/nurse_coverage_shift_detail.csv
+primary_key: [date, unit, shift]
+relations:
+  - date -> calendar_days.date
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [date, weekday, unit, shift, shift_start, shift_end, period, occupied_peak_or_active_ors, required_nurses, existing_on_duty_min, on_shift_nurses, coverage_ok]

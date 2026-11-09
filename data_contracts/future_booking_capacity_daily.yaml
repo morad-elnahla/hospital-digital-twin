@@ -1,0 +1,9 @@
+table: future_booking_capacity_daily
+data_version: csv-snapshot-2026-11-09
+source: data/future_booking_capacity_daily.csv
+primary_key: [date]
+relations:
+  - none declared
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [date, day_of_week, is_weekend, OR_total_bookings, OR_elective_bookings, OR_urgent_placeholders, OR-01_bookings, OR-01_free_minutes, OR-01_capacity_minutes, OR-01_largest_free_block_min, OR-02_bookings, OR-02_free_minutes, OR-02_capacity_minutes, OR-02_largest_free_block_min, OR-03_bookings, OR-03_free_minutes, OR-03_capacity_minutes, OR-03_largest_free_block_min, OR-04_bookings, OR-04_free_minutes, OR-04_capacity_minutes, OR-04_largest_free_block_min, OR-05_bookings, OR-05_free_minutes, OR-05_capacity_minutes, OR-05_largest_free_block_min, OR-06_bookings, OR-06_free_minutes, OR-06_capacity_minutes, OR-06_largest_free_block_min, appointments_total, CARD_total, CARD_scheduled, CARD_cancelled, CARD_doctor_slot_capacity, CARD_unbooked_doctor_slots, IMG_total, IMG_scheduled, IMG_cancelled, LAB_total, LAB_scheduled, LAB_cancelled]

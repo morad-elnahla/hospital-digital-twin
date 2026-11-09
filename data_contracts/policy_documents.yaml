@@ -1,0 +1,9 @@
+table: policy_documents
+data_version: csv-snapshot-2026-11-09
+source: data/policy_documents.csv
+primary_key: [document_id]
+relations:
+  - department_id -> departments.department_id
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [document_id, title, policy_type, department_id, version, effective_from, effective_to, content, approved, source_label]

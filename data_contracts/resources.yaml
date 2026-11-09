@@ -1,0 +1,9 @@
+table: resources
+data_version: csv-snapshot-2026-11-09
+source: data/resources.csv
+primary_key: [resource_id]
+relations:
+  - department_id -> departments.department_id
+kpi_mappings:
+  - none directly consumed as a KPI
+columns: [resource_id, department_id, resource_name, resource_type, quantity, status]
