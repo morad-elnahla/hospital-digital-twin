@@ -97,7 +97,7 @@ class Dashboard(unittest.TestCase):
 
     def test_every_ui_text_key_exists_in_both_languages(self):
         import re
-        js = (ROOT / "static/app.js").read_text() + (ROOT / "dashboard.html").read_text()
+        js = (ROOT / "static/app.js").read_text(encoding="utf-8") + (ROOT / "dashboard.html").read_text(encoding="utf-8")
         out = subprocess.run([NODE, "-e", "eval(require('fs').readFileSync('static/i18n.js','utf8').replace('const I18N','globalThis.I18N'));"
                               "console.log(JSON.stringify({en:Object.keys(I18N.en),ar:Object.keys(I18N.ar)}))"], cwd=ROOT, capture_output=True, text=True).stdout
         d = json.loads(out)

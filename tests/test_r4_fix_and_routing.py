@@ -32,15 +32,19 @@ class VerifiedCalendarRegression(unittest.TestCase):
                 self.assertEqual(slot_index[key].capacity, int(r['capacity_minutes']))
                 self.assertGreaterEqual(slot_index[key].booked, int(r['booked_minutes_with_turnover']))
 
-    def test_r4_scheduled_moves_do_not_land_on_friday(self):
+    def test_r4_scheduled_moves_fail_closed_without_case_team_ids(self):
         with tempfile.TemporaryDirectory() as tmp:
             app = App(DATA, Path(tmp)/'rt', Path(tmp)/'pol')
             preview = app.simulate({'as_of': AS_OF.isoformat(), 'unit': 'ICU', 'multiplier': 1.3})
-            self.assertEqual(preview['rescheduled_bookings'], 3)
+            self.assertEqual(preview['rescheduled_bookings'], 0)
+            self.assertFalse(any(p['agent'] == 'or' for p in preview['decision']['accepted']))
+            self.assertTrue(any('UNVERIFIABLE' in reason for item in preview['decision']['rejected']
+                                if item['proposal']['agent'] == 'or' for reason in item['reasons']))
             d = app.run({'as_of': AS_OF.isoformat(), 'unit': 'ICU', 'multiplier': 1.3},
                         Principal('test', 'operations_manager'))
-            dates = [a['to_slot']['start'][:10] for p in d['accepted'] for a in p['actions'] if 'to_slot' in a]
-            self.assertEqual(dates, ['2026-10-25'] * 3)
+            dates = [a['to_slot']['start'][:10] for p in d['accepted'] if p['agent'] == 'or'
+                     for a in p['actions'] if 'to_slot' in a]
+            self.assertEqual(dates, [])
             self.assertTrue(all(datetime.fromisoformat(day).weekday() not in (4, 5) for day in dates))
 
     def test_calendar_is_bounded(self):

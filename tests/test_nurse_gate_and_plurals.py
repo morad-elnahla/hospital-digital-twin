@@ -120,7 +120,9 @@ class ReportedScenarioEndToEnd(unittest.TestCase):
         moved = [a for p in d["accepted"] for a in p["actions"] if "pool" in a]
         self.assertEqual(moved, [])
         self.assertEqual(d["status"], "PENDING")  # OR postponement remains possible without adding beds
-        self.assertTrue(any(p["agent"] == "or" for p in d["accepted"]))
+        self.assertFalse(any(p["agent"] == "or" for p in d["accepted"]))
+        self.assertTrue(any("UNVERIFIABLE" in reason for item in d["rejected"]
+                            if item["proposal"]["agent"] == "or" for reason in item["reasons"]))
 
     def _stored_unsafe_decision(self):
         """A PENDING record whose accepted set the old gate would have let through."""

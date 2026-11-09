@@ -147,11 +147,12 @@ class ImpactAccounting(unittest.TestCase):
             sim = app.simulate({"as_of": "2026-10-01T08:00", "unit": "ICU", "multiplier": 12, "language": "en"})
         icu = sim["after"]["ICU"]
         self.assertEqual(icu["shortfall_beds"], sim["before"]["ICU"]["shortfall_beds"])          # confirmed: unchanged by postponements
-        self.assertEqual(icu["assumed_relief_beds"], float(sim["rescheduled_bookings"]))
-        self.assertEqual(icu["shortfall_if_assumed_beds"], icu["shortfall_beds"] - sim["rescheduled_bookings"])
-        self.assertEqual(sim["impact_basis"], {"capacity_changes": "computed", "postponements": "assumed"})
+        self.assertIsNone(icu["assumed_relief_beds"])  # clinic appointment moves do not imply ICU relief
+        self.assertIsNone(icu["shortfall_if_assumed_beds"])
+        self.assertEqual(sim["rescheduled_bookings"], 0)  # OR moves fail closed without case team IDs
+        self.assertEqual(sim["impact_basis"], {"capacity_changes": "computed", "postponements": None})
         self.assertEqual(sim["cost_basis"]["simulated"], False)
-        self.assertEqual(sim["unavailable"][0]["metric_key"], "effect")
+        self.assertNotIn("effect", [item["metric_key"] for item in sim["unavailable"]])
 
 
 class NurseRatioAndBedSizing(unittest.TestCase):
@@ -246,7 +247,7 @@ class EmptyDecisions(unittest.TestCase):
         d = self.app.run({"as_of": "2026-10-20T08:00", "unit": "ICU", "multiplier": 12, "language": "ar"}, self.mgr)
         self.assertEqual(d["status"], "NO_ACTION")
         self.assertEqual(d["accepted"], [])
-        self.assertTrue(any("غير قابل للتحقق" in reason for r in d["rejected"] for reason in r["reasons_ar"]))
+        self.assertTrue(any("غير قابل للتحقق" in reason for r in d["rejected"] for reason in r["reasons"]))
         self.assertRegex(d["card"]["summary"], r"[\u0600-\u06FF]")
         self.assertGreater(d["card"]["unmet"]["ICU:beds"], 0)
 
@@ -284,7 +285,8 @@ class ReadableReasons(unittest.TestCase):
             self.assertRegex(t, arabic, t)
             self.assertNotIn("exceeds", t)
         for r_ar, r_en in zip(ar["rejected"], en["rejected"]):
-            self.assertIn("exceeds", r_en["reasons"][0])
+            self.assertIn("UNVERIFIABLE", r_en["reasons"][0])
+            self.assertIn("غير قابل للتحقق", r_ar["reasons"][0])
             self.assertEqual(r_ar["reason_codes"], r_en["reason_codes"])   # same decision, same facts
 
     def test_both_languages_carry_the_same_numbers(self):
@@ -311,7 +313,7 @@ class ReadableReasons(unittest.TestCase):
 
     def test_what_if_labels_are_localised_but_keep_a_stable_key(self):
         sim = self.app.simulate({"as_of": "2026-10-17T08:00", "unit": "ICU", "multiplier": 12, "language": "ar"})
-        self.assertEqual([u["metric_key"] for u in sim["unavailable"]], ["effect", "waiting", "revenue", "overtime"])
+        self.assertEqual([u["metric_key"] for u in sim["unavailable"]], ["waiting", "revenue", "overtime"])
         self.assertRegex(sim["unavailable"][0]["metric"], r"[\u0600-\u06FF]")
         self.assertRegex(sim["cost_note"], r"[\u0600-\u06FF]")
 

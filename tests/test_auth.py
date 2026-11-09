@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,7 +23,8 @@ class AuthUnit(unittest.TestCase):
         creds = self.auth.initial_credentials
         raw = (self.dir / "users.json").read_text()
         self.assertFalse(any(p in raw for p in creds.values()))
-        self.assertEqual((self.dir / "users.json").stat().st_mode & 0o077, 0)
+        if os.name == "posix":
+            self.assertEqual((self.dir / "users.json").stat().st_mode & 0o077, 0)
         again = Auth(self.dir / "users.json")                    # accounts persist, nothing re-created
         self.assertIsNone(again.initial_credentials)
         self.assertIn("manager", json.loads(raw))

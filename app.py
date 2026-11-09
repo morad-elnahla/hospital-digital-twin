@@ -267,7 +267,10 @@ class App:
         cost = None
         if all(day_rate.get(u) is not None for u in ("ICU", "WARD")):
             cost = round(sum(moved[u] * day_rate[u] for u in ("ICU", "WARD")), 0)
-        rescheduled = [x for p in decision.accepted for x in p.actions if hasattr(x, "booking_id")]
+        # Only OR moves represent postponed procedures; clinic appointment moves
+        # do not imply ICU bed relief or a postponed surgery.
+        rescheduled = [x for p in decision.accepted for x in p.actions
+                       if hasattr(x, "booking_id") and x.from_slot.domain == "OR"]
         view = decision.to_dict()
         texts = decision_texts(decision, lang)
         view = overlay(view, texts, lang)

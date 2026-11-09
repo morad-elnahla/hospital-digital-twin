@@ -1,13 +1,13 @@
 # Phase status
 
-Python 3.13.13 / Windows. Python 3.12 is not installed. Tests were run per file or as explicitly selected methods in one process; the full suite was not run.
+Python 3.13.13 / Windows. Python 3.12 is not installed. Each `tests/*.py` file was run in its own pytest process. Changed files were rerun after fixes. No combined suite was used.
 
 ## Phase 0 — partial baseline
 
 - Untouched baseline: `69a11c4`; Phase 0 commands/status: `4068c60`.
 - Requirements note that the current runtime uses only the standard library; Makefile targets cover run, per-file test, schema, build-db, and report regeneration.
 - The user-requested `pytest --timeout=120` command could not collect because `pytest-timeout` is unavailable. The same file was then run once with verbose unittest and a 120-second process limit: **24 passed in 58.003s**, no traceback. No Python 3.12 runtime was available.
-- Browser test file: **7 skipped** because Playwright/Chromium is unavailable. The initial per-file baseline was incomplete; see `docs/TODO.md`.
+- Browser test file: **7 skipped** because Playwright/Chromium is unavailable. See `docs/TODO.md` for the initial baseline note.
 
 ## Phase 1 — done
 
@@ -23,7 +23,34 @@ Python 3.13.13 / Windows. Python 3.12 is not installed. Tests were run per file 
 - Clinic capacity counts doctors whose recorded shifts cover that hour. Future final surgery/appointment statuses no longer filter earlier replay bookings.
 - OR booking rows carry case specialty. The pack has no provider/team IDs (only roster headcounts), so the hard constraint marks an OR move **UNVERIFIABLE** and refuses it; specialty mismatch also fails closed.
 - Replay tests, including changes to post-`as_of` metrics/actuals: **5 passed**. Other affected files: `test_agents.py` **24 passed**, `test_data_pack.py` **16 passed**, `test_insights.py` **12 passed**, selected API lifecycle/safety cases **5 passed**, and `test_r4_decision_integration.py` **1 passed**.
-- `test_agent_fixes.py` was intentionally not rerun after Phase 2 because the request called for a single diagnostic run. Its recorded 24/24 result predates these changes. The full `test_app.py` file was not rerun after its assertions were adjusted; the 5 selected API cases passed.
+- Full per-file verification found expectations that still assumed unverifiable OR changes would be accepted. Those tests now assert rejection. It also exposed a simulator count bug: clinic appointment moves were being labeled as postponed surgeries; only OR moves now count toward assumed bed relief. Updated affected test files passed on rerun.
+
+## Per-file verification (Python 3.13 / Windows)
+
+Every row is one separate pytest process. Durations are wall time and include process startup. `subtests` are unittest subtests reported within pytest.
+
+| File | Result | Time |
+| --- | --- | ---: |
+| `test_agent_fixes.py` | 24 passed | 70.25s |
+| `test_agents.py` | 24 passed | 5.35s |
+| `test_agents_page.py` | 4 passed | 4.96s |
+| `test_app.py` | 22 passed | 170.62s |
+| `test_assistant.py` | 13 passed | 20.87s |
+| `test_auth.py` | 6 passed | 8.04s |
+| `test_browser.py` | 7 skipped (Playwright/Chromium unavailable) | 4.49s |
+| `test_corpus.py` | 8 passed | 5.18s |
+| `test_data_pack.py` | 16 passed | 26.63s |
+| `test_frontend.py` | 3 passed, 1 skipped (legacy DOM harness) | 6.46s |
+| `test_insights.py` | 12 passed | 17.30s |
+| `test_llm.py` | 19 passed | 21.34s |
+| `test_no_action_display.py` | 3 passed | 3.65s |
+| `test_nurse_gate_and_plurals.py` | 17 passed, 4 subtests passed | 15.14s |
+| `test_phase2_replay.py` | 5 passed | 17.02s |
+| `test_policies.py` | 9 passed | 3.96s |
+| `test_r4_decision_integration.py` | 1 passed | 14.01s |
+| `test_r4_fix_and_routing.py` | 4 passed (rerun; first attempt exceeded 180s) | 200.39s |
+| `test_schema_drift.py` | 3 passed | 3.51s |
+| `test_store.py` | 6 passed | 5.54s |
 
 ## Remaining verification limits
 
@@ -32,3 +59,5 @@ Python 3.13.13 / Windows. Python 3.12 is not installed. Tests were run per file 
 - OR moves will remain unavailable until source data provides a case provider or team assignment; the current roster only has counts.
 - OR availability only covers 2026-10-21 through 2026-11-10. The schedule has no publication timestamp, so historical knowledge of that future roster is unavailable.
 - Future booking rows with final `CANCELLED` / `RESCHEDULED` status have no effective timestamp; replay keeps the planned row as an **assumption** rather than leaking that later outcome into an earlier decision.
+- The stated **1,236** actual OR turnover-gap count was not reproduced: adjacent actual-time pairs yield **1,262** when compared with the preceding surgery's turnover and **1,439** with the following surgery's turnover. See `docs/RECONCILIATION.md` for query definition and caveat.
+- The obsolete root 23-table `schema.sql` was removed. Canonical generated schema is `db/schema.sql` with 42 tables; `validation_report.json` was regenerated from `runtime/hdt.sqlite` (7 pass, 2 warn, 0 unresolved).

@@ -10,6 +10,10 @@
 
 **Other integrity evidence:** database build loaded 678,013 rows; `PRAGMA foreign_key_check` returned 0 violations and `PRAGMA integrity_check` returned `ok`. `or_availability` only covers 2026-10-21 through 2026-11-10. Its surgeon/anesthetist fields are headcounts, not provider/team identifiers; case-to-team compatibility therefore remains unverifiable and blocks surgery moves.
 
+## Actual OR turnover gaps
+
+The suggested **1,236** short-turnover count was not reproducible from the current SQLite snapshot under the direct adjacent-actual-case definition. I ordered the 7,833 surgeries with both `actual_start` and `actual_end` by actual start within each OR, yielding **7,832** adjacent pairs. For each pair, `gap_minutes = next.actual_start - previous.actual_end`; comparing that gap with the **previous** surgery's `turnover_minutes` gives **1,262** gaps shorter than turnover, with no actual interval overlaps. Comparing against the next surgery's turnover instead gives **1,439**. The source does not define which case owns the turnover requirement, so 1,236 remains unconfirmed pending a precise filter/association rule. This is a validation finding only; no CSV values were changed.
+
 ## Evidence classes
 
 - `confirmed_computation`: row counts, source-to-source reconciliation, recorded OR actual intervals, and database integrity checks, all with `runtime/hdt.sqlite` as source.
