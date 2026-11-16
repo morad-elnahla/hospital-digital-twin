@@ -119,3 +119,31 @@ describe("noActionKind", () => {
     expect(noActionKind({ status: "PENDING" })).toBeNull();
   });
 });
+
+describe("agent report cards", () => {
+  const report = (agent: string, status: string, unavailable: string[] = []) => ({ agent, status, unavailable, proposals: [], findings: [], notes: [] });
+  const d = {
+    ...base,
+    status: "NO_ACTION",
+    no_action_code: "none.reason.no_proposals",
+    reports: [report("staff", "unavailable", ["لا يوجد خط أساس للطلب"]), report("er", "no_proposal")],
+  };
+
+  it("shows an unavailable agent with its reason, apart from an agent that found nothing to do", () => {
+    wrap(<DecisionViewBody d={d} t={t("ar")} />);
+
+    expect(screen.getByTestId("agent-staff")).toHaveAttribute("data-status", "unavailable");
+    expect(screen.getByTestId("agent-unavailable-staff")).toHaveTextContent("غير متاح — لا يوجد خط أساس للطلب");
+    expect(screen.getByTestId("agent-staff")).not.toHaveTextContent("لا اقتراح");
+    expect(screen.getByTestId("agent-er")).toHaveAttribute("data-status", "no_proposal");
+    expect(screen.getByTestId("agent-er")).toHaveTextContent("لا اقتراح");
+    expect(screen.queryByTestId("agent-unavailable-er")).not.toBeInTheDocument();
+  });
+
+  it("decisions stored before `status` existed keep the proposal-count behaviour", () => {
+    const old = { ...d, reports: [{ agent: "er", proposals: [], findings: [], notes: [] }] };
+    wrap(<DecisionViewBody d={old} t={t("ar")} />);
+
+    expect(screen.getByTestId("agent-er")).toHaveAttribute("data-status", "no_proposal");
+  });
+});

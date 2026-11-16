@@ -13,6 +13,19 @@ export function noActionKind(d: any): NoActionKind {
   return null;
 }
 
+export type AgentStatus = "proposed" | "unavailable" | "no_proposal" | "error";
+
+/**
+ * One agent's outcome, from the backend's `status`. "unavailable" (the agent lacked the data to
+ * evaluate, see `unavailable[]`) is never the same as "no_proposal" (it evaluated and found nothing
+ * to do). Decisions stored before `status` existed fall back to the proposal count.
+ */
+export function agentStatus(r: any): AgentStatus {
+  const s = r?.status;
+  if (s === "proposed" || s === "unavailable" || s === "no_proposal" || s === "error") return s;
+  return r?.proposals?.length ? "proposed" : "no_proposal";
+}
+
 /** Confirmed unmet need, from a list item (`unmet`) or a detail view (`card.unmet`). */
 export function unmetOf(d: any): Record<string, number> {
   const u = d?.unmet ?? d?.card?.unmet ?? {};

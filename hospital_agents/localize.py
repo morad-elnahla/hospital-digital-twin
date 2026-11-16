@@ -47,7 +47,8 @@ def decision_texts(decision, created_lang: str = "en") -> dict[str, Any]:
         out[lang] = {
             "accepted": [{"title": render(p.title, lang), "rationale": render_all(p.rationale, lang)} for p in decision.accepted],
             "rejected": [{"title": render(r.proposal.title, lang), "reasons": render_all(r.reasons, lang)} for r in decision.rejected],
-            "reports": [{"agent": r.agent, "notes": render_all(r.notes, lang)} for r in decision.reports],
+            "reports": [{"agent": r.agent, "notes": render_all(r.notes, lang), "unavailable": render_all(r.unavailable, lang)}
+                        for r in decision.reports],
             "card": {k: render_all(getattr(decision.card, k), lang) for k in ("assumptions", "unverified", "warnings", "recommended_actions")},
             "summary": _summary(decision, lang, created_lang),
             "no_action_reason": render(reason, lang) if reason else None,
@@ -67,7 +68,8 @@ def overlay(view: dict, texts: Mapping[str, Any], lang: str) -> dict:
     v = dict(view)
     v["accepted"] = [{**p, "title": x["title"], "rationale": x["rationale"]} for p, x in zip(view["accepted"], t["accepted"])]
     v["rejected"] = [{**r, "proposal": {**r["proposal"], "title": x["title"]}, "reasons": x["reasons"]} for r, x in zip(view["rejected"], t["rejected"])]
-    v["reports"] = [{**r, "notes": x["notes"]} for r, x in zip(view["reports"], t["reports"])]
+    v["reports"] = [{**r, "notes": x["notes"], **({"unavailable": x["unavailable"]} if "unavailable" in x else {})}
+                    for r, x in zip(view["reports"], t["reports"])]
     v["card"] = {**view["card"], **t["card"], "summary": t["summary"]}
     v["explanation"] = {**view["explanation"], "text": t["summary"]}
     v["no_action_reason"] = t["no_action_reason"]

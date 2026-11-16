@@ -50,6 +50,10 @@ def plan(agent: str, inputs: SharedInputs, settings: Settings, kind: str, *,
         else:
             surplus[u] = max(0, p.total - max(p.committed, n[1]))
 
+    # Unavailable (not "nothing to do"): every pool this agent is responsible for lacks a validated forecast.
+    candidates = [u for u in pools if (recipients is None or u in recipients) and u not in exclude]
+    unavailable = (Msg("reb.no_baseline"),) if candidates and all(need(u) is None for u in candidates) else ()
+
     proposals, findings = [], []
     for unit in sorted(pools):
         if (recipients is not None and unit not in recipients) or unit in exclude:
@@ -106,4 +110,4 @@ def plan(agent: str, inputs: SharedInputs, settings: Settings, kind: str, *,
             title=Msg("title.rebalance", agent=agent, pool=pool.key, covered=covered),
             actions=tuple(actions), rationale=tuple(rationale),
             evidence=(f"forecast:{inputs.forecast.model_version}",), unmet=unmet))
-    return AgentReport(agent, tuple(proposals), tuple(findings), tuple(notes))
+    return AgentReport(agent, tuple(proposals), tuple(findings), tuple(notes), unavailable=unavailable)

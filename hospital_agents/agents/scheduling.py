@@ -65,7 +65,8 @@ class ORAgent(Agent):
         demand = inputs.forecast.peak(f"{key}:demand", settings.forecast_stat)
         horizon = inputs.forecast.horizon_end
         if pool is None or demand is None or horizon is None:
-            return AgentReport(self.name, notes=(Msg("or.pool_missing", key=key),))
+            missing = Msg("or.pool_missing", key=key)
+            return AgentReport(self.name, notes=(missing,), unavailable=(missing,))
         required = ceil_exact(demand / settings.target_utilization.get(kind, 1.0))
         deficit = required - pool.total
         if deficit <= 0:

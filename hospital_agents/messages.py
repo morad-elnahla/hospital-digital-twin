@@ -95,6 +95,7 @@ CATALOG: dict[str, tuple[str, str]] = {
                           "which does not allow more than the current {total}; the full move is proposed so the gate can reject it with the numbers",
                           "حد التمريض: {nurses} ممرض/ة في الوردية بنسبة {ratio:g} مريض لكل ممرض يدعمون {max_beds} سرير كحد أقصى في {unit} "
                           "ولا يسمح ذلك بأكثر من {total} الحالية؛ يُقترح النقل كاملًا ليرفضه الفحص مع الأرقام"),
+    "reb.no_baseline": ("no demand baseline available", "لا يوجد خط أساس للطلب"),
     "reb.abstain_resource": ("no resource-specific demand forecast passed rolling-origin validation; abstaining",
                              "لا يوجد توقع طلب خاص بالموارد اجتاز التحقق المتحرك؛ امتنع الوكيل"),
     # ───────── OR / appointment ─────────

@@ -198,6 +198,17 @@ class Api(unittest.TestCase):
         self.assertEqual(self.call("/api/decisions", who="viewer")[1], [])
 
     # ── pages return real data ──
+    def test_viewer_sees_unavailable_agents_apart_from_no_proposal(self):
+        _, run = self.call("/api/run", {"unit": "ICU", "multiplier": 1.3, "language": "ar"}, "analyst")
+        status, d = self.call(f"/api/decisions/{run['id']}", who="viewer")
+        self.assertEqual(status, 200)
+        reports = {r["agent"]: r for r in d["reports"]}
+        for name in ("staff", "resource"):      # no validated demand baseline: not "nothing to do"
+            self.assertEqual(reports[name]["status"], "unavailable", name)
+            self.assertEqual(reports[name]["unavailable"], ["لا يوجد خط أساس للطلب"], name)
+        for name in ("er", "appointment"):      # evaluated, nothing to propose
+            self.assertEqual((reports[name]["status"], reports[name]["unavailable"]), ("no_proposal", []), name)
+
     def test_pages(self):
         for path, key in (("/api/overview", "cards"), ("/api/capacity", "units"), ("/api/staff", "on_shift_now"),
                           ("/api/or", "by_room"), ("/api/forecasts", "series"), ("/api/quality", "checks"),

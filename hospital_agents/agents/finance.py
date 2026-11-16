@@ -16,7 +16,7 @@ class FinanceAgent(Agent):
         threshold = settings.revenue_alert_threshold_egp
         base = inputs.simulation.metrics.get("revenue_at_risk_egp") if inputs.simulation else None
         if threshold is None or base is None:
-            return AgentReport(self.name, notes=(Msg("fin.abstain"),))
+            return AgentReport(self.name, notes=(Msg("fin.abstain"),), unavailable=(Msg("fin.abstain"),))
         if base <= threshold:
             return AgentReport(self.name)
         actions = (Alert(AlertCode.REVENUE_AT_RISK, Msg("fin.alert", base=base, threshold=threshold)),)

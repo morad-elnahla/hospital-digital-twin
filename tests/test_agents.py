@@ -13,6 +13,7 @@ from hospital_agents.arbitration import Arbitrator
 from hospital_agents.contracts import (Alert, AlertCode, ImpactEstimate, PoolAdjustment, Proposal,
                                        Reschedule, SlotKey, make_id)
 from hospital_agents.explain import LLMExplainer, is_grounded
+from hospital_agents.localize import decision_texts
 
 RAW = json.loads((Path(__file__).parent / "fixtures" / "scenario.json").read_text())
 
@@ -212,6 +213,54 @@ class Explanations(unittest.TestCase):
     def test_arabic_template(self):
         d = decide(settings=Settings(language="ar"))
         self.assertIn("القرار", d.explanation.text)
+
+
+
+class AgentAvailability(unittest.TestCase):
+    """"Unavailable" (no data to evaluate) must never read as "no proposal" (evaluated, nothing to do)."""
+
+    @staticmethod
+    def reports(d):
+        return {r.agent: r for r in d.reports}
+
+    def test_missing_demand_baseline_is_unavailable_not_no_proposal(self):
+        def no_nurse_demand(d):
+            for key in [k for k in d["forecast"]["series"] if ":nurses:" in k]:
+                del d["forecast"]["series"][key]
+        r = self.reports(decide(inputs(no_nurse_demand)))
+        for name in ("staff", "resource", "finance"):
+            self.assertEqual((r[name].status, r[name].proposals), ("unavailable", ()), name)
+        self.assertEqual([m.code for m in r["staff"].unavailable], ["reb.no_baseline"])
+        self.assertEqual([m.code for m in r["resource"].unavailable], ["reb.no_baseline"])
+        self.assertNotEqual(r["bed"].status, "unavailable")      # bed demand baselines are present
+
+    def test_evaluated_with_nothing_to_do_stays_no_proposal(self):
+        def no_demand(d):
+            for points in d["forecast"]["series"].values():
+                for point in points:
+                    point.update(value=0.0, hi=None)
+        r = self.reports(decide(inputs(no_demand)))
+        for name in ("er", "bed", "staff"):
+            self.assertEqual((r[name].status, r[name].unavailable), ("no_proposal", ()), name)
+
+    def test_proposals_and_errors_keep_their_status(self):
+        r = self.reports(decide())
+        self.assertEqual(r["bed"].status, "proposed")
+        self.assertEqual(AgentReport("x", error="boom").status, "error")
+        self.assertEqual(dataclasses.replace(r["bed"], proposals=()).status, "no_proposal")
+
+    def test_status_and_reasons_reach_the_api_view_in_both_languages(self):
+        def no_nurse_demand(d):
+            for key in [k for k in d["forecast"]["series"] if ":nurses:" in k]:
+                del d["forecast"]["series"][key]
+        d = decide(inputs(no_nurse_demand))
+        self.assertEqual({x["agent"]: x["status"] for x in d.to_dict()["reports"]}["staff"], "unavailable")
+        texts = decision_texts(d)
+        staff = {"ar": None, "en": None}
+        for lang in staff:
+            staff[lang] = next(x for a, x in zip(d.reports, texts[lang]["reports"]) if a.agent == "staff")["unavailable"]
+        self.assertEqual(staff["ar"], ["لا يوجد خط أساس للطلب"])
+        self.assertEqual(staff["en"], ["no demand baseline available"])
 
 
 if __name__ == "__main__":

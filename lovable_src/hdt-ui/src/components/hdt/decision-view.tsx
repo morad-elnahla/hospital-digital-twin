@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
 import { useApp } from "@/lib/app-state";
-import { noActionDisplay, noActionKind, statusLabelKey, unmetOf } from "@/lib/decision-ui";
+import { agentStatus, noActionDisplay, noActionKind, statusLabelKey, unmetOf } from "@/lib/decision-ui";
 import { fmt } from "@/lib/i18n";
 import { scenarioMessage } from "@/lib/scenario-ui";
 import { Empty, Panel, Pill, Unavailable } from "./kit";
@@ -146,18 +146,30 @@ export function DecisionViewBody({ d, t }: { d: any; t: T }) {
       {d.reports?.length > 0 && (
         <Panel title={t("agent_reports")} prov="agent">
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            {d.reports.map((r: any) => (
-              <div key={r.agent} className="rounded-xl bg-muted/60 p-3">
-                <div className="flex items-center justify-between">
-                  <b className="text-sm">{t("agent_" + r.agent)}</b>
-                  <Pill tone={r.proposals.length ? "primary" : "info"}>{r.proposals.length ? t("proposed", { n: r.proposals.length }) : t("no_proposal")}</Pill>
+            {d.reports.map((r: any) => {
+              const status = agentStatus(r);
+              return (
+                <div key={r.agent} className="rounded-xl bg-muted/60 p-3" data-testid={`agent-${r.agent}`} data-status={status}>
+                  <div className="flex items-center justify-between">
+                    <b className="text-sm">{t("agent_" + r.agent)}</b>
+                    {status === "unavailable" ? (
+                      <Pill tone="warn">{t("status_unavailable")}</Pill>
+                    ) : (
+                      <Pill tone={status === "proposed" ? "primary" : "info"}>{status === "proposed" ? t("proposed", { n: r.proposals.length }) : t("no_proposal")}</Pill>
+                    )}
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{t("agent_role_" + r.agent)}</p>
+                  {status === "unavailable" && (
+                    <p className="mt-1 text-[11px] font-medium text-warn" data-testid={`agent-unavailable-${r.agent}`}>
+                      {t("status_unavailable")} — {(r.unavailable ?? []).join("; ")}
+                    </p>
+                  )}
+                  {r.findings?.map((f: any, i: number) => (
+                    <div key={i} className="num mt-1 text-[11px]" dir="ltr">{f.pool}: {fmt(f.projected)} / {f.total}</div>
+                  ))}
                 </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">{t("agent_role_" + r.agent)}</p>
-                {r.findings?.map((f: any, i: number) => (
-                  <div key={i} className="num mt-1 text-[11px]" dir="ltr">{f.pool}: {fmt(f.projected)} / {f.total}</div>
-                ))}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Panel>
       )}

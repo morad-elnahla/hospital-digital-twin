@@ -25,6 +25,16 @@ class AgentReport:
     findings: tuple[Finding, ...] = ()
     notes: tuple[str, ...] = ()      # abstentions and missing-input explanations
     error: str | None = None
+    # Why the agent could not evaluate its domain at all (no demand baseline, no threshold...).
+    # Empty means it had what it needs: zero proposals then genuinely means "nothing to do".
+    unavailable: tuple[str, ...] = ()
+    # error > proposed > unavailable > no_proposal. Derived here so every consumer agrees.
+    status: str = field(init=False, default="no_proposal")
+
+    def __post_init__(self) -> None:
+        status = ("error" if self.error else "proposed" if self.proposals
+                  else "unavailable" if self.unavailable else "no_proposal")
+        object.__setattr__(self, "status", status)
 
 
 class Agent(ABC):

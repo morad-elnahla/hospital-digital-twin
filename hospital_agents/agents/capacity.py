@@ -33,10 +33,14 @@ class StaffAgent(Agent):
 
     async def propose(self, inputs: SharedInputs, settings: Settings) -> AgentReport:
         reports = [rebalance.plan(self.name, inputs, settings, kind) for kind in ("doctors", "nurses")]
+        # Unavailable only when no staff kind that exists in the twin could be evaluated.
+        present = [r for r, kind in zip(reports, ("doctors", "nurses")) if any(p.kind == kind for p in inputs.twin.pools.values())]
+        unavailable = tuple(dict.fromkeys(m for r in present for m in r.unavailable)) if present and all(r.unavailable for r in present) else ()
         return AgentReport(self.name,
                            tuple(p for r in reports for p in r.proposals),
                            tuple(f for r in reports for f in r.findings),
-                           tuple(n for r in reports for n in r.notes))
+                           tuple(n for r in reports for n in r.notes),
+                           unavailable=unavailable)
 
 
 class ResourceAgent(Agent):
@@ -45,14 +49,15 @@ class ResourceAgent(Agent):
 
     async def propose(self, inputs: SharedInputs, settings: Settings) -> AgentReport:
         if not settings.resource_kinds:
-            return AgentReport(self.name, notes=(Msg("reb.abstain_resource"),))
+            return AgentReport(self.name, notes=(Msg("reb.abstain_resource"),), unavailable=(Msg("reb.no_baseline"),))
         reports = [rebalance.plan(self.name, inputs, settings, k) for k in settings.resource_kinds]
         # The source pack has only an aggregate resource-utilisation index, not
         # resource-specific demand series that can pass rolling-origin validation.
         if not any(any(key.split(":")[1] == kind and key.endswith(":demand")
                         for key in inputs.forecast.series) for kind in settings.resource_kinds):
             return AgentReport(self.name, findings=tuple(f for r in reports for f in r.findings),
-                               notes=tuple(n for r in reports for n in r.notes) + (Msg("reb.abstain_resource"),))
+                               notes=tuple(n for r in reports for n in r.notes) + (Msg("reb.abstain_resource"),),
+                               unavailable=(Msg("reb.no_baseline"),))
         return AgentReport(self.name,
                            tuple(p for r in reports for p in r.proposals),
                            tuple(f for r in reports for f in r.findings),
